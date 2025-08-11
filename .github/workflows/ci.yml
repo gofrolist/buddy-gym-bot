@@ -22,19 +22,16 @@ jobs:
           version: "0.8.8"
 
       - name: Sync deps
-        run: uv sync
-
-      - name: Install dev tools
-        run: uv tool install ruff pyright pytest
+        run: uv sync --all-extras
 
       - name: Ruff lint
-        run: ruff check .
+        run: uv run ruff check .
 
       - name: Ruff format (check)
-        run: ruff format --check .
+        run: uv run ruff format --check .
 
       - name: Pyright
-        run: pyright
+        run: uv run pyright
 
       - name: Pytest
-        run: pytest -q
+        run: uv run pytest -q
