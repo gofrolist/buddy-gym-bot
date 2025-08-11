@@ -32,7 +32,7 @@ IMAGE ?= ghcr.io/${USER}/buddy-gym-bot:dev
 
 .PHONY: build
 build:
-	docker build -t $(IMAGE) .
+	docker build --platform linux/arm64 -t $(IMAGE) .
 
 .PHONY: deploy
 deploy:

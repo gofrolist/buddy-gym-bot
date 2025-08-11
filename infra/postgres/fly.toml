@@ -1,4 +1,4 @@
-app = "buddy-gym-postgres"   # change
+app = "buddy-gym-postgres"
 primary_region = "iad"
 
 [build]

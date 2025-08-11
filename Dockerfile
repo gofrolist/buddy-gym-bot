@@ -1,15 +1,28 @@
-# Stage 1: Build with UV 0.8.8 + Python 3.13
-FROM ghcr.io/astral-sh/uv:0.8.8-python3.13-bookworm as uv
-WORKDIR /app
-COPY pyproject.toml ./
-# If you add a uv.lock later, copy it too for reproducible builds:
-# COPY uv.lock ./
-RUN uv sync
+# Install uv
+FROM python:3.13-alpine AS builder
+COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /uvx /bin/
 
-# Stage 2: Runtime
-FROM python:3.13.6-slim-bookworm
+# Change the working directory to the `app` directory
 WORKDIR /app
-COPY --from=uv /app/.venv /app/.venv
-ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
-COPY . .
-CMD ["python", "-m", "app.main"]
+
+# Install dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-install-project --no-editable
+
+# Copy the project into the intermediate image
+ADD . /app
+
+# Sync the project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-editable
+
+FROM python:3.13-alpine
+
+# Copy the environment, but not the source code
+COPY --from=builder /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Run the application
+CMD ["python", "-m", "buddy_gym_bot.main"]
