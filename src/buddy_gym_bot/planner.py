@@ -1,4 +1,10 @@
+"""Simple training plan generator."""
+
+import logging
 from dataclasses import dataclass
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -20,6 +26,7 @@ FULL_BODY = [
 
 
 def make_week_plan(u: UserProfile) -> list[list[dict]]:
+    logger.debug("Making week plan: %s", u)
     days = max(3, min(6, u.days_per_week or 3))
     week: list[list[dict]] = []
     for d in range(days):
@@ -27,4 +34,5 @@ def make_week_plan(u: UserProfile) -> list[list[dict]]:
         if d % 2 == 1:
             day = day[1:] + day[:1]
         week.append(day)
+    logger.debug("Generated week plan with %s days", days)
     return week
