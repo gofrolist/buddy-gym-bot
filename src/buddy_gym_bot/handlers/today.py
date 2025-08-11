@@ -1,7 +1,7 @@
 """Handler for the /today command."""
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from aiogram import Router
 from aiogram.types import Message
@@ -15,11 +15,13 @@ logger = logging.getLogger(__name__)
 
 @router.message(lambda m: m.text and m.text.startswith("/today"))
 async def today(msg: Message):
-    dow = date.today().isoweekday()
+    today = date.today()
+    dow = today.isoweekday()
+    week_start = today - timedelta(days=today.weekday())
     async with get_conn() as conn:
         cur = await conn.execute(
             "select plan from workouts where tg_user_id=%s and day_of_week=%s and week_start=%s",
-            (msg.from_user.id, dow, date.today()),
+            (msg.from_user.id, dow, week_start),
         )
         rec = await cur.fetchone()
     logger.info("Today's workout requested by user %s", getattr(msg.from_user, "id", "unknown"))
