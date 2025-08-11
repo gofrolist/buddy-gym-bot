@@ -1,5 +1,7 @@
-# src/buddy_gym_bot/main.py
+"""Application entry point and bot setup."""
+
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from typing import cast
 
@@ -17,6 +19,13 @@ from buddy_gym_bot.handlers.stats import router as r_stats
 from buddy_gym_bot.handlers.today import router as r_today
 from buddy_gym_bot.settings import settings
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
 
 async def main() -> None:
     bot = Bot(
@@ -29,6 +38,7 @@ async def main() -> None:
         dp.include_router(r)
 
     if settings.USE_WEBHOOK:
+        logger.info("Starting in webhook mode")
         app = web.Application()
 
         async def healthz(_: web.Request) -> web.Response:
@@ -54,6 +64,7 @@ async def main() -> None:
         setup_application(app, dp, bot=bot)
         web.run_app(app, host="0.0.0.0", port=8080)
     else:
+        logger.info("Starting in polling mode")
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
 

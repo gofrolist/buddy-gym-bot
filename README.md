@@ -21,6 +21,12 @@ export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
 uv run python -m app.main
 ```
 
+### Logging
+
+The bot uses Python's standard `logging` module. Logs are emitted at the
+`INFO` level by default with timestamps, logger names and messages. Adjust the
+log level via environment variables or in `main.py` if needed.
+
 ### Deploy to Fly
 
 1) Create Postgres/Redis apps (optional), set secrets on bot:

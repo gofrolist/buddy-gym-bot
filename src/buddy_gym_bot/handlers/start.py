@@ -1,9 +1,15 @@
+"""Handler for the /start command."""
+
+import logging
+
 from aiogram import F, Router
 from aiogram.types import Message
 
 from ..db import get_conn
 
 router = Router()
+
+logger = logging.getLogger(__name__)
 
 
 @router.message(F.text.startswith("/start"))
@@ -13,6 +19,7 @@ async def start(msg: Message):
             "insert into users (tg_user_id) values (%s) on conflict (tg_user_id) do nothing",
             (msg.from_user.id,),
         )
+    logger.info("User %s started bot", getattr(msg.from_user, "id", "unknown"))
     await msg.answer(
         "🏋️ Welcome! I'm your gym buddy.\n"
         "• Set up: /plan\n"

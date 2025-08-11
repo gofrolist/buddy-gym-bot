@@ -1,6 +1,7 @@
 # src/buddy_gym_bot/handlers/log.py
 from __future__ import annotations
 
+import logging
 import re
 
 from aiogram import Router
@@ -9,6 +10,8 @@ from aiogram.types import Message
 from buddy_gym_bot.db import get_conn
 
 router = Router()
+
+logger = logging.getLogger(__name__)
 
 # /log Bench 3x5 @ 60kg RPE7
 PAT = re.compile(
@@ -23,6 +26,7 @@ async def log(msg: Message) -> None:
     text: str = msg.text or ""
     m = PAT.search(text)
     if not m:
+        logger.debug("Failed to parse log command: %s", text)
         await msg.reply("Format: /log Bench 3x5 @ 60kg RPE7")
         return
 
@@ -53,6 +57,16 @@ async def log(msg: Message) -> None:
             (uid, exercise, sets_i, reps_i, weight_f, rpe_f),
         )
 
+    logger.info(
+        "Logged set for user %s: %s %sx%s @ %s%s RPE%s",
+        uid,
+        exercise,
+        sets_i,
+        reps_i,
+        weight_f,
+        unit_disp,
+        rpe_f,
+    )
     await msg.reply(
         f"✅ Logged: {exercise} {sets_i}x{reps_i} @ {weight_f:g}{unit_disp} RPE{rpe_f:g}"
     )

@@ -1,3 +1,6 @@
+"""Handler for the /plan command."""
+
+import logging
 from datetime import date
 
 from aiogram import F, Router
@@ -8,6 +11,8 @@ from ..planner import UserProfile, make_week_plan
 
 router = Router()
 
+logger = logging.getLogger(__name__)
+
 
 @router.message(F.text.startswith("/plan"))
 async def plan(msg: Message):
@@ -17,6 +22,13 @@ async def plan(msg: Message):
     equip = parts[3] if len(parts) > 3 else "gym"
     profile = UserProfile(goal=goal, experience="novice", days_per_week=days, equipment=equip)
     week = make_week_plan(profile)
+    logger.info(
+        "Generated plan for user %s: goal=%s days=%s equip=%s",
+        getattr(msg.from_user, "id", "unknown"),
+        goal,
+        days,
+        equip,
+    )
 
     async with get_conn() as conn:
         await conn.execute(
