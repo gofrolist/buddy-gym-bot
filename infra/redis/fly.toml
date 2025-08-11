@@ -1,0 +1,24 @@
+app = "gym-buddy-redis"   # change
+primary_region = "iad"
+
+[build]
+  image = "redis:8-alpine"
+
+[mounts]
+  source = "redis_data"
+  destination = "/data"
+
+[env]
+  REDIS_APPENDONLY = "yes"
+  REDIS_AOF_ENABLED = "yes"
+  REDIS_PASSWORD = "change-me"  # override with secrets in prod
+
+[processes]
+  app = "redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}"
+
+[[services]]
+  internal_port = 6379
+  protocol = "tcp"
+  [[services.ports]]
+    port = 6379
+    handlers = ["tls"]

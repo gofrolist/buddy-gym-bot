@@ -1,0 +1,47 @@
+[project]
+name = "gym-buddy-bot"
+version = "0.1.0"
+description = "Telegram gym trainer/buddy chatbot"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+  "aiogram==3.13.1",
+  "pydantic==2.9.2",
+  "psycopg[binary]==3.2.1",
+  "redis==5.0.8",
+  "python-dotenv==1.0.1",
+  "openai==1.51.0",
+  "uvloop==0.20.0 ; platform_system != 'Windows'"
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+fix = true
+exclude = ["migrations/"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+venvPath = "."
+venv = ".venv"
+exclude = ["migrations/**", "**/__pycache__"]
+
+[tool.uv.scripts]
+dev = "python -m app.main"
+migrate = "psycopg -c '$(cat migrations/001_init.sql)' $DATABASE_URL"
+test = "pytest -q"
+lint = "ruff check ."
+fmt = "ruff format ."
+typecheck = "pyright"
