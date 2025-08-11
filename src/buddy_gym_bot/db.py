@@ -1,6 +1,9 @@
-import psycopg
 from contextlib import asynccontextmanager
+
+import psycopg
+
 from .settings import settings
+
 
 @asynccontextmanager
 async def get_conn():

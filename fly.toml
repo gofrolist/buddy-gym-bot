@@ -1,4 +1,4 @@
-app = "gym-buddy-bot"  # change
+app = "buddy-gym-bot"  # change
 primary_region = "iad"
 
 [build]

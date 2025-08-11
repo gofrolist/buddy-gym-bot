@@ -1,6 +1,6 @@
-# Gym Buddy Bot (Telegram)
+# Buddy Gym Bot (Telegram)
 
-A minimal, production-ready Telegram bot that acts as your gym trainer/buddy.
+A minimal, production-ready Telegram bot that acts as your gym buddy.
 
 - Python **3.13.6**, UV **0.8.8**
 - Fly.io deploy (webhook)

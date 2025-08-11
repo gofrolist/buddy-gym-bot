@@ -1,17 +1,30 @@
+[build-system]
+requires = ["uv_build>=0.8.7,<0.9.0"]
+build-backend = "uv_build"
+
 [project]
-name = "gym-buddy-bot"
+name = "buddy-gym-bot"
 version = "0.1.0"
-description = "Telegram gym trainer/buddy chatbot"
+description = "Telegram buddy gym chatbot"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-  "aiogram==3.13.1",
-  "pydantic==2.9.2",
-  "psycopg[binary]==3.2.1",
-  "redis==5.0.8",
-  "python-dotenv==1.0.1",
-  "openai==1.51.0",
-  "uvloop==0.20.0 ; platform_system != 'Windows'"
+  "aiogram==3.21.0",
+  "pydantic==2.11.7",
+  "psycopg[binary]==3.2.9",
+  "redis==6.4.0",
+  "python-dotenv==1.1.1",
+  "openai>=1.99.2,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pre-commit",
+  "ruff",
+  "pyright"
+]
+test = [
+  "pytest",
 ]
 
 [tool.ruff]
@@ -31,17 +44,19 @@ line-ending = "lf"
 
 [tool.pyright]
 pythonVersion = "3.13"
-typeCheckingMode = "basic"
-reportMissingImports = true
-reportMissingTypeStubs = false
 venvPath = "."
 venv = ".venv"
-exclude = ["migrations/**", "**/__pycache__"]
-
-[tool.uv.scripts]
-dev = "python -m app.main"
-migrate = "psycopg -c '$(cat migrations/001_init.sql)' $DATABASE_URL"
-test = "pytest -q"
-lint = "ruff check ."
-fmt = "ruff format ."
-typecheck = "pyright"
+include = ["src"]
+exclude = [
+  ".venv",
+  "**/__pycache__",
+  ".git",
+  "migrations",
+  "**/site-packages",
+  "**/dist",
+  "**/build"
+]
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportOptionalMemberAccess = "warning"
+reportUnknownMemberType = "warning"

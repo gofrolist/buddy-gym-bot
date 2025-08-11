@@ -4,55 +4,31 @@ export PYTHONUNBUFFERED=1
 .PHONY: help
 help:
 	@echo "Targets:"
-	@echo "  tools          - Install dev tools via uv tool (ruff, pyright, pre-commit, pytest)"
 	@echo "  sync           - Install project deps with uv"
 	@echo "  run            - Start bot locally (polling)"
 	@echo "  test           - Run tests"
-	@echo "  lint           - Ruff lint"
-	@echo "  fmt            - Ruff format"
-	@echo "  typecheck      - Pyright type checking"
 	@echo "  precommit      - Run pre-commit on all files"
-	@echo "  migrate        - Apply DB migration (requires DATABASE_URL)"
 	@echo "  build          - Build Docker image"
 	@echo "  deploy         - Deploy to Fly using GHCR image (requires FLY_API_TOKEN)"
 
-.PHONY: tools
-tools:
-	uv tool install ruff pyright pre-commit pytest
-
 .PHONY: sync
 sync:
-	uv sync
+	uv sync --all-extras
 
 .PHONY: run
 run:
-	uv run python -m app.main
+	uv run python -m buddy_gym_bot.main
 
 .PHONY: test
 test:
-	pytest -q
-
-.PHONY: lint
-lint:
-	ruff check .
-
-.PHONY: fmt
-fmt:
-	ruff format .
-
-.PHONY: typecheck
-typecheck:
-	pyright
+	uv run pytest
 
 .PHONY: precommit
 precommit:
-	pre-commit run --all-files
+	uv run pre-commit autoupdate
+	uv run pre-commit run --all-files
 
-.PHONY: migrate
-migrate:
-	uv run psycopg -c "$$(cat migrations/001_init.sql)" "$$DATABASE_URL"
-
-IMAGE ?= ghcr.io/${USER}/gym-buddy-bot:dev
+IMAGE ?= ghcr.io/${USER}/buddy-gym-bot:dev
 
 .PHONY: build
 build:
