@@ -28,7 +28,7 @@ class FakeCursor:
     def __init__(self, plan: list[dict] | None) -> None:
         self._plan = plan
 
-    async def fetchone(self) -> list[dict] | None:
+    async def fetchone(self) -> tuple[list[dict]] | None:
         return (self._plan,) if self._plan is not None else None
 
 
@@ -36,7 +36,7 @@ class FakeConn:
     def __init__(self) -> None:
         self.storage: dict[tuple[int, int, date], list[dict]] = {}
 
-    async def execute(self, sql: str, params: tuple) -> FakeCursor | None:  # noqa: ANN401
+    async def execute(self, sql: str, params: tuple) -> FakeCursor | None:
         if sql.startswith("delete from workouts"):
             tg_user_id, week_start = params
             keys = [k for k in self.storage if k[0] == tg_user_id and k[2] == week_start]
@@ -70,7 +70,7 @@ def test_today_after_plan_same_week(monkeypatch: pytest.MonkeyPatch) -> None:
         _today = date(2024, 1, 1)  # Monday
 
         @classmethod
-        def today(cls) -> "FakeDate":
+        def today(cls) -> date:
             return cls._today
 
     monkeypatch.setattr(plan_module, "date", FakeDate)
@@ -92,4 +92,3 @@ def test_today_after_plan_same_week(monkeypatch: pytest.MonkeyPatch) -> None:
     import asyncio
 
     asyncio.run(run())
-
