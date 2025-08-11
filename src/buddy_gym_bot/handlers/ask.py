@@ -4,6 +4,7 @@ import logging
 
 from aiogram import Router
 from aiogram.types import Message
+from openai import APIConnectionError, APIError, OpenAIError, RateLimitError
 
 from buddy_gym_bot.settings import get_openai_client
 
@@ -44,6 +45,18 @@ async def ask(msg: Message) -> None:
         if not isinstance(content, str):
             content = str(content)
         await msg.reply(content.strip())
-    except Exception:
-        logger.exception("Failed to answer /ask")
+    except RateLimitError as exc:
+        logger.exception("OpenAI rate limit on /ask: %s", exc)
+        await msg.reply("I'm getting a lot of questions right now. Please try again later.")
+    except APIConnectionError as exc:
+        logger.exception("OpenAI connection error on /ask: %s", exc)
+        await msg.reply("I couldn't reach the AI service. Please try again later.")
+    except APIError as exc:
+        logger.exception("OpenAI API error on /ask: %s", exc)
+        await msg.reply("The AI service returned an error. Please try again later.")
+    except OpenAIError as exc:
+        logger.exception("OpenAI error on /ask: %s", exc)
+        await msg.reply("Sorry, I couldn't get an answer from the AI service.")
+    except Exception as exc:
+        logger.exception("Failed to answer /ask: %s", exc)
         await msg.reply("Sorry, I couldn't answer that right now. Please try again in a bit.")
