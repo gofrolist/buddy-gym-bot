@@ -1,7 +1,7 @@
 """Handler for the /plan command."""
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from aiogram import F, Router
 from aiogram.types import Message
@@ -30,14 +30,17 @@ async def plan(msg: Message):
         equip,
     )
 
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+
     async with get_conn() as conn:
         await conn.execute(
             "delete from workouts where tg_user_id=%s and week_start=%s",
-            (msg.from_user.id, date.today()),
+            (msg.from_user.id, week_start),
         )
         for idx, _day in enumerate(week, start=1):
             await conn.execute(
                 "insert into workouts (tg_user_id, day_of_week, plan, week_start) values (%s,%s,%s,%s)",
-                (msg.from_user.id, idx, week[idx - 1], date.today()),
+                (msg.from_user.id, idx, week[idx - 1], week_start),
             )
     await msg.reply(f"✅ Plan created for {days} days/week ({goal}, {equip}). Use /today.")
