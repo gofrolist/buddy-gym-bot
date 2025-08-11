@@ -4,10 +4,11 @@ import logging
 
 from aiogram import Router
 from aiogram.types import Message
-from openai import OpenAI
+
+from buddy_gym_bot.settings import get_openai_client
 
 router = Router()
-client = OpenAI()  # reads OPENAI_API_KEY from env
+client = get_openai_client()
 
 logger = logging.getLogger(__name__)
 
