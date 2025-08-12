@@ -39,8 +39,7 @@ async def ask(msg: Message) -> None:
             messages=[
                 {"role": "system", "content": SYS},
                 {"role": "user", "content": query},
-            ],
-            temperature=0.3,
+            ]
         )
         content = resp.choices[0].message.content or ""
         # Ensure we send back a string
