@@ -34,7 +34,8 @@ async def ask(msg: Message) -> None:
 
     try:
         resp = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-nano",
+            service_tier="flex",
             messages=[
                 {"role": "system", "content": SYS},
                 {"role": "user", "content": query},
