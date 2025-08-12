@@ -25,6 +25,7 @@ class Settings:
     REDIS_URL: str
     USE_WEBHOOK: bool
     WEBHOOK_URL: str
+    WEBAPP_URL: str
     PLAN_DEFAULT_SPLIT: str
     ADMIN_CHAT_ID: int | None
 
@@ -40,6 +41,7 @@ class Settings:
             REDIS_URL=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             USE_WEBHOOK=_to_bool(os.getenv("USE_WEBHOOK"), default=False),
             WEBHOOK_URL=os.getenv("WEBHOOK_URL", ""),
+            WEBAPP_URL=os.getenv("WEBAPP_URL", ""),
             PLAN_DEFAULT_SPLIT=os.getenv("PLAN_DEFAULT_SPLIT", "full_body"),
             ADMIN_CHAT_ID=(int(admin_id) if (admin_id := os.getenv("ADMIN_CHAT_ID")) else None),
         )
