@@ -28,9 +28,10 @@ body {
 .container {
   flex: 1;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
   padding: 1rem;
+  gap: 1rem;
 }
 
 .form {
@@ -85,4 +86,31 @@ body {
 .btn:focus {
   outline: none;
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.2);
+}
+
+.workout {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.set-item {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 0.25rem;
+}
+
+.stats {
+  width: 100%;
+  max-width: 400px;
+  font-size: 0.9rem;
+}
+
+.controls {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
 }
