@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Log workout</title>
+</head>
+<body>
+  <h1>Log workout</h1>
+  <form id="log-form">
+    <label>Exercise <input name="exercise" required /></label><br />
+    <label>Sets <input name="sets" type="number" required /></label><br />
+    <label>Reps <input name="reps" type="number" required /></label><br />
+    <label>Weight <input name="weight" type="number" step="any" required /></label><br />
+    <label>RPE <input name="rpe" type="number" step="any" /></label><br />
+    <button type="submit">Log</button>
+  </form>
+  <script src="app.js"></script>
+</body>
+</html>

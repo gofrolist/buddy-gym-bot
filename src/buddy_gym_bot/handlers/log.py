@@ -5,9 +5,15 @@ import logging
 import re
 
 from aiogram import Router
-from aiogram.types import Message
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    WebAppInfo,
+)
 
 from buddy_gym_bot.db import get_conn
+from buddy_gym_bot.settings import settings
 
 router = Router()
 
@@ -27,7 +33,21 @@ async def log(msg: Message) -> None:
     m = PAT.search(text)
     if not m:
         logger.debug("Failed to parse log command: %s", text)
-        await msg.reply("Format: /log Bench 3x5 @ 60kg RPE7")
+        kb = None
+        if settings.WEBAPP_URL:
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Open log form", web_app=WebAppInfo(url=settings.WEBAPP_URL)
+                        )
+                    ]
+                ]
+            )
+        await msg.reply(
+            "Format: /log Bench 3x5 @ 60kg RPE7",
+            reply_markup=kb,
+        )
         return
 
     # Guard from_user; channel posts etc. may not have it
