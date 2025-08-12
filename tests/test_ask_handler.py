@@ -27,19 +27,24 @@ class DummyMessage:
 
 
 class FakeRateLimitError(Exception):
-    def __init__(self, code: str) -> None:
-        super().__init__(code)
-        self.code = code
+    def __init__(self, code: str | None = None, nested_code: str | None = None) -> None:
+        super().__init__(code or nested_code)
+        if code is not None:
+            self.code = code
+        if nested_code is not None:
+            self.error = types.SimpleNamespace(code=nested_code)
 
 
-def _setup_rate_limit(monkeypatch: pytest.MonkeyPatch, code: str) -> list[str]:
-    """Prepare ask handler to raise a RateLimitError with given code and record alerts."""
+def _setup_rate_limit(
+    monkeypatch: pytest.MonkeyPatch, *, code: str | None = None, nested_code: str | None = None
+) -> list[str]:
+    """Prepare ask handler to raise a RateLimitError and record alerts."""
 
     monkeypatch.setattr(ask_module, "RateLimitError", FakeRateLimitError)
 
     class FakeCompletions:
         def create(self, *args: object, **kwargs: object) -> object:
-            raise FakeRateLimitError(code)
+            raise FakeRateLimitError(code, nested_code)
 
     class FakeClient:
         chat = types.SimpleNamespace(completions=FakeCompletions())
@@ -56,7 +61,7 @@ def _setup_rate_limit(monkeypatch: pytest.MonkeyPatch, code: str) -> list[str]:
 
 
 def test_rate_limit_insufficient_quota_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls = _setup_rate_limit(monkeypatch, "insufficient_quota")
+    calls = _setup_rate_limit(monkeypatch, code="insufficient_quota")
     msg = DummyMessage("/ask hi")
 
     asyncio.run(ask_module.ask(msg))
@@ -65,8 +70,18 @@ def test_rate_limit_insufficient_quota_alerts(monkeypatch: pytest.MonkeyPatch) -
     assert msg.replies and "try again" in msg.replies[0].lower()
 
 
+def test_rate_limit_nested_insufficient_quota_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _setup_rate_limit(monkeypatch, nested_code="insufficient_quota")
+    msg = DummyMessage("/ask hi")
+
+    asyncio.run(ask_module.ask(msg))
+
+    assert calls, "Expected alert_admin for nested insufficient_quota"
+    assert msg.replies and "out of credits" in msg.replies[0].lower()
+
+
 def test_rate_limit_other_no_alert(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls = _setup_rate_limit(monkeypatch, "other_code")
+    calls = _setup_rate_limit(monkeypatch, code="other_code")
     msg = DummyMessage("/ask hi")
 
     asyncio.run(ask_module.ask(msg))
