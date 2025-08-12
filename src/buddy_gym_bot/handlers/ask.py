@@ -6,6 +6,7 @@ from aiogram import Router
 from aiogram.types import Message
 from openai import APIConnectionError, APIError, OpenAIError, RateLimitError
 
+from buddy_gym_bot.handlers.alerts import alert_admin
 from buddy_gym_bot.settings import get_openai_client
 
 router = Router()
@@ -52,6 +53,9 @@ async def ask(msg: Message) -> None:
         )
         if quota_exhausted:
             logger.warning("OpenAI insufficient quota on /ask: %s", exc)
+            if msg.bot is not None:
+                # Notify admins so they can address the quota issue promptly.
+                await alert_admin(msg.bot, "OpenAI quota exhausted during /ask")
             await msg.reply("The AI service is out of credits—please try again later.")
         else:
             logger.exception("OpenAI rate limit on /ask: %s", exc)
