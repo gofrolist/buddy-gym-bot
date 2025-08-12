@@ -12,6 +12,7 @@ primary_region = 'lax'
 [env]
   PLAN_DEFAULT_SPLIT = 'full_body'
   # USE_WEBHOOK = 'true'
+  WEBAPP_URL = 'https://buddy-gym-bot.fly.dev/webapp/'
 
 [[services]]
   protocol = 'tcp'
