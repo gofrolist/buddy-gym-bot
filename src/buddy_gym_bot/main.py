@@ -62,7 +62,15 @@ async def main() -> None:
         startup_list.append(on_startup)
 
         setup_application(app, dp, bot=bot)
-        web.run_app(app, host="0.0.0.0", port=8080)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, host="0.0.0.0", port=8080)
+        await site.start()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await runner.cleanup()
     else:
         logger.info("Starting in polling mode")
         await bot.delete_webhook(drop_pending_updates=True)
