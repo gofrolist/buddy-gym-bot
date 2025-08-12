@@ -5,6 +5,8 @@ from datetime import date, timedelta
 
 from aiogram import F, Router
 from aiogram.types import Message
+from psycopg import AsyncConnection
+from psycopg.types.json import Jsonb
 
 from ..db import get_conn
 from ..planner import UserProfile, make_week_plan
@@ -38,9 +40,11 @@ async def plan(msg: Message):
             "delete from workouts where tg_user_id=%s and week_start=%s",
             (msg.from_user.id, week_start),
         )
+        is_psycopg = isinstance(conn, AsyncConnection)
         for idx, _day in enumerate(week, start=1):
+            plan_payload = Jsonb(week[idx - 1]) if is_psycopg else week[idx - 1]
             await conn.execute(
                 "insert into workouts (tg_user_id, day_of_week, plan, week_start) values (%s,%s,%s,%s)",
-                (msg.from_user.id, idx, week[idx - 1], week_start),
+                (msg.from_user.id, idx, plan_payload, week_start),
             )
     await msg.reply(f"✅ Plan created for {days} days/week ({goal}, {equip}). Use /today.")
