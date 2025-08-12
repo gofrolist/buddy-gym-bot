@@ -46,8 +46,16 @@ async def ask(msg: Message) -> None:
             content = str(content)
         await msg.reply(content.strip())
     except RateLimitError as exc:
-        logger.exception("OpenAI rate limit on /ask: %s", exc)
-        await msg.reply("I'm getting a lot of questions right now. Please try again later.")
+        quota_exhausted = (
+            getattr(exc, "code", None) == "insufficient_quota"
+            or getattr(getattr(exc, "error", None), "code", None) == "insufficient_quota"
+        )
+        if quota_exhausted:
+            logger.warning("OpenAI insufficient quota on /ask: %s", exc)
+            await msg.reply("The AI service is out of credits—please try again later.")
+        else:
+            logger.exception("OpenAI rate limit on /ask: %s", exc)
+            await msg.reply("I'm getting a lot of questions right now. Please try again later.")
     except APIConnectionError as exc:
         logger.exception("OpenAI connection error on /ask: %s", exc)
         await msg.reply("I couldn't reach the AI service. Please try again later.")
