@@ -1,5 +1,5 @@
 app = "buddy-gym-redis"
-primary_region = "iad"
+primary_region = "lax"
 
 [build]
   image = "redis:8-alpine"
