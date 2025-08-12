@@ -54,6 +54,7 @@ async def ask(msg: Message) -> None:
         if quota_exhausted:
             logger.warning("OpenAI insufficient quota on /ask: %s", exc)
             if msg.bot is not None:
+                # Notify admins so they can address the quota issue promptly.
                 await alert_admin(msg.bot, "OpenAI quota exhausted during /ask")
             await msg.reply("The AI service is out of credits—please try again later.")
         else:
