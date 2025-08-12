@@ -11,7 +11,7 @@ primary_region = 'lax'
 
 [env]
   PLAN_DEFAULT_SPLIT = 'full_body'
-  USE_WEBHOOK = 'true'
+  # USE_WEBHOOK = 'true'
 
 [[services]]
   protocol = 'tcp'
