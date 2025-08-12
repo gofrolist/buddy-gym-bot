@@ -49,6 +49,11 @@ async def main() -> None:
         app.router.add_get("/healthz", healthz)
 
         # Serve lightweight logging web app
+        async def webapp_index(_: web.Request) -> web.FileResponse:
+            return web.FileResponse(Path(__file__).parent / "webapp" / "index.html")
+
+        app.router.add_get("/webapp/", webapp_index)
+
         app.router.add_static(
             "/webapp/",
             path=str(Path(__file__).parent / "webapp"),
