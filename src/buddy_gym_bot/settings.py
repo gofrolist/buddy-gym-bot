@@ -26,6 +26,7 @@ class Settings:
     USE_WEBHOOK: bool
     WEBHOOK_URL: str
     PLAN_DEFAULT_SPLIT: str
+    ADMIN_CHAT_ID: int | None
 
     @staticmethod
     def from_env() -> Settings:
@@ -40,6 +41,7 @@ class Settings:
             USE_WEBHOOK=_to_bool(os.getenv("USE_WEBHOOK"), default=False),
             WEBHOOK_URL=os.getenv("WEBHOOK_URL", ""),
             PLAN_DEFAULT_SPLIT=os.getenv("PLAN_DEFAULT_SPLIT", "full_body"),
+            ADMIN_CHAT_ID=(int(admin_id) if (admin_id := os.getenv("ADMIN_CHAT_ID")) else None),
         )
 
 

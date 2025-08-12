@@ -18,6 +18,7 @@ pre-commit install
 # Local run (polling)
 export BOT_TOKEN=123:abc
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
+export ADMIN_CHAT_ID=123456789  # Telegram ID to receive quota alerts
 uv run python -m app.main
 ```
 
@@ -31,7 +32,7 @@ log level via environment variables or in `main.py` if needed.
 
 1) Create Postgres/Redis apps (optional), set secrets on bot:
 ```bash
-fly secrets set   BOT_TOKEN=... OPENAI_API_KEY=...   DATABASE_URL='postgresql://postgres:<pass>@<pg-app>.internal:5432/postgres'   REDIS_URL='redis://default:<pass>@<redis-app>.internal:6379/0'   WEBHOOK_URL='https://<bot-app>.fly.dev/bot'
+fly secrets set   BOT_TOKEN=... OPENAI_API_KEY=... ADMIN_CHAT_ID=<telegram_id>   DATABASE_URL='postgresql://postgres:<pass>@<pg-app>.internal:5432/postgres'   REDIS_URL='redis://default:<pass>@<redis-app>.internal:6379/0'   WEBHOOK_URL='https://<bot-app>.fly.dev/bot'
 ```
 
 2) Push to `main` → GitHub Actions builds and deploys.
