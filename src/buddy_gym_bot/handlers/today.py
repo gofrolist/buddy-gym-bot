@@ -1,5 +1,6 @@
 """Handler for the /today command."""
 
+import json
 import logging
 from datetime import date, timedelta
 
@@ -28,5 +29,9 @@ async def today(msg: Message):
     if not rec:
         return await msg.reply("No plan for today. Run /plan first.")
     plan = rec[0]
+    if isinstance(plan, str):
+        plan = json.loads(plan)
+    elif hasattr(plan, "data"):
+        plan = plan.data
     lines = [f"• {e['name']}: {e['sets']}x{e['reps']}" for e in plan]
     await msg.reply("📋 *Today*\n" + "\n".join(lines), parse_mode="Markdown")
