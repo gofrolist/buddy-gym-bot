@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import cast
 
 from aiogram import Bot, Dispatcher
@@ -11,6 +12,7 @@ from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
+from buddy_gym_bot.db import get_conn
 from buddy_gym_bot.handlers.ask import router as r_ask
 from buddy_gym_bot.handlers.log import router as r_log
 from buddy_gym_bot.handlers.plan import router as r_plan
@@ -45,6 +47,36 @@ async def main() -> None:
             return web.Response(text="ok")
 
         app.router.add_get("/healthz", healthz)
+
+        # Serve lightweight logging web app
+        app.router.add_static(
+            "/webapp/",
+            path=str(Path(__file__).parent / "webapp"),
+        )
+
+        async def webapp_log(request: web.Request) -> web.Response:
+            data = await request.json()
+            uid = int(data.get("tg_user_id", 0))
+            exercise = (data.get("exercise") or "").title()
+            sets_i = int(data.get("sets", 0))
+            reps_i = int(data.get("reps", 0))
+            weight_f = float(data.get("weight", 0))
+            rpe_f = float(data.get("rpe", 0))
+
+            async with get_conn() as conn:
+                await conn.execute(
+                    "insert into logs (tg_user_id, exercise, sets, reps, weight, rpe) "
+                    "values (%s, %s, %s, %s, %s, %s)",
+                    (uid, exercise, sets_i, reps_i, weight_f, rpe_f),
+                )
+
+            await bot.send_message(
+                uid,
+                f"✅ Logged: {exercise} {sets_i}x{reps_i} @ {weight_f:g} RPE{rpe_f:g}",
+            )
+            return web.json_response({"status": "ok"})
+
+        app.router.add_post("/webapp/log", webapp_log)
 
         SimpleRequestHandler(dp, bot).register(app, path="/bot")
 
