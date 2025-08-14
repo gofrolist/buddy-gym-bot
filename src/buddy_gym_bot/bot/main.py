@@ -10,6 +10,7 @@ from aiogram import Bot, Dispatcher, Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
+from aiogram.client.default import DefaultBotProperties
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # pyright: ignore[reportMissingImports]
 from apscheduler.triggers.date import DateTrigger  # pyright: ignore[reportMissingImports]
 
@@ -245,7 +246,7 @@ def main() -> None:
     """Entrypoint for the bot application."""
     if not SETTINGS.BOT_TOKEN:
         raise SystemExit("BOT_TOKEN is required")
-    bot = Bot(SETTINGS.BOT_TOKEN, parse_mode=ParseMode.HTML)
+    bot = Bot(SETTINGS.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
     dp.include_router(router)
     # Use lambda to pass bot instance to on_startup
