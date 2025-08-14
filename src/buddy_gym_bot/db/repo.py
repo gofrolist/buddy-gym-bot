@@ -9,6 +9,7 @@ import secrets
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -23,6 +24,30 @@ _engine: AsyncEngine | None = None
 _session: async_sessionmaker[AsyncSession] | None = None
 
 
+def _prepare_url(url: str) -> tuple[str, dict]:
+    """Return sanitized DB URL and connect args.
+
+    Removes query parameters that asyncpg doesn't understand and converts
+    ``sslmode=disable`` or ``ssl=false`` into the ``ssl`` connect arg.
+    """
+
+    url_obj = make_url(url)
+    query = dict(url_obj.query)
+    connect_args: dict[str, object] = {}
+
+    # asyncpg doesn't support ``sslmode``; translate common forms
+    sslmode = query.pop("sslmode", None)
+    ssl_val = query.pop("ssl", None)
+    if sslmode == "disable" or (ssl_val and str(ssl_val).lower() in {"0", "false", "off", "no"}):
+        connect_args["ssl"] = False
+
+    url_obj = url_obj.set(query=query)
+    if not url.startswith("sqlite"):
+        connect_args.setdefault("statement_cache_size", 0)
+
+    return url_obj.render_as_string(hide_password=False), connect_args
+
+
 async def init_db() -> None:
     """
     Initialize the async database engine and sessionmaker, and create tables if needed.
@@ -33,11 +58,9 @@ async def init_db() -> None:
     if not SETTINGS.DATABASE_URL:
         logging.error("DATABASE_URL is required for DB initialization.")
         raise RuntimeError("DATABASE_URL is required")
-    connect_args = {}
-    if not SETTINGS.DATABASE_URL.startswith("sqlite"):
-        connect_args = {"statement_cache_size": 0}
+    db_url, connect_args = _prepare_url(SETTINGS.DATABASE_URL)
     _engine = create_async_engine(
-        SETTINGS.DATABASE_URL,
+        db_url,
         echo=False,
         pool_pre_ping=True,
         connect_args=connect_args,
