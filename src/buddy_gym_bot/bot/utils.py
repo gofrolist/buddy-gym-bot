@@ -8,3 +8,8 @@ def webapp_button(url: str, text: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))]]
     )
+
+
+def wave_hello(name: str) -> str:
+    """Return a friendly greeting with a wave emoji."""
+    return f"👋 Hello, {name}!"

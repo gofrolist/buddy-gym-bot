@@ -81,7 +81,7 @@ async def _startup() -> None:
 async def _shutdown() -> None:
     """FastAPI shutdown: clean up bot resources."""
     await bot.delete_webhook()
-    await dp.emit_shutdown(bot)
+    await dp.emit_shutdown()
     await bot.session.close()
 
 
