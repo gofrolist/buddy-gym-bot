@@ -21,7 +21,7 @@ from ..logging_setup import setup_logging
 from .commands_labels import apply_localized_commands
 from .openai_scheduling import generate_schedule
 from .parsers import TRACK_RE
-from .utils import webapp_button
+from .utils import wave_hello, webapp_button
 
 router = Router()
 scheduler = AsyncIOScheduler()
@@ -53,8 +53,10 @@ async def _handle_start(message: Message) -> None:
             except Exception:
                 logging.exception("record_referral_click failed")
     kb = webapp_button(SETTINGS.WEBAPP_URL, "Open BuddyGym")
+    greeting = wave_hello(message.from_user.first_name or "Athlete")
     await message.answer(
-        "Welcome to BuddyGym! Track your workouts and get reminders.", reply_markup=kb
+        f"{greeting} Welcome to BuddyGym! Track your workouts and get reminders.",
+        reply_markup=kb,
     )
 
 
