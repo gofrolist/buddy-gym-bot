@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import secrets
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.engine import make_url
@@ -49,6 +50,19 @@ def _prepare_url(url: str) -> tuple[str, dict]:
     return url_obj.render_as_string(hide_password=False), connect_args
 
 
+async def _run_migrations(conn) -> None:
+    """Execute .sql migration files sequentially."""
+    migrations_dir = Path(__file__).resolve().parents[3] / "migrations"
+    if not migrations_dir.is_dir():
+        return
+    for path in sorted(migrations_dir.glob("*.sql")):
+        sql = path.read_text(encoding="utf-8")
+        for stmt in sql.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                await conn.exec_driver_sql(stmt)
+
+
 async def init_db() -> None:
     """
     Initialize the async database engine and sessionmaker, and create tables if needed.
@@ -69,6 +83,9 @@ async def init_db() -> None:
     _session = async_sessionmaker(_engine, expire_on_commit=False)
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        dialect_name = getattr(getattr(conn, "dialect", None), "name", "sqlite")
+        if dialect_name != "sqlite":
+            await _run_migrations(conn)
 
 
 def get_session() -> async_sessionmaker[AsyncSession]:
