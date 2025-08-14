@@ -81,6 +81,8 @@ async def _startup() -> None:
 async def _shutdown() -> None:
     """FastAPI shutdown: clean up bot resources."""
     await bot.delete_webhook()
+    # aiogram 3.21: do not pass bot to emit_shutdown since middlewares like
+    # FSMContextMiddleware.close() accept no parameters
     await dp.emit_shutdown()
     await bot.session.close()
 
