@@ -27,24 +27,25 @@ _session: async_sessionmaker[AsyncSession] | None = None
 def _prepare_url(url: str) -> tuple[str, dict]:
     """Return sanitized DB URL and connect args.
 
-    Removes query parameters that asyncpg doesn't understand and converts
-    ``sslmode=disable`` or ``ssl=false`` into the ``ssl`` connect arg.
+    Extracts common SSL query parameters and passes them as ``connect_args``
+    for ``psycopg``. ``ssl=false`` becomes ``sslmode=disable``.
     """
 
     url_obj = make_url(url)
     query = dict(url_obj.query)
     connect_args: dict[str, object] = {}
 
-    # asyncpg doesn't support ``sslmode``; translate common forms
     sslmode = query.pop("sslmode", None)
     ssl_val = query.pop("ssl", None)
-    if sslmode == "disable" or (ssl_val and str(ssl_val).lower() in {"0", "false", "off", "no"}):
-        connect_args["ssl"] = False
+    if ssl_val is not None:
+        if str(ssl_val).lower() in {"0", "false", "off", "no"}:
+            sslmode = "disable"
+        elif str(ssl_val).lower() in {"1", "true", "on", "yes"}:
+            sslmode = "require"
+    if sslmode:
+        connect_args["sslmode"] = sslmode
 
     url_obj = url_obj.set(query=query)
-    if not url.startswith("sqlite"):
-        connect_args.setdefault("statement_cache_size", 0)
-
     return url_obj.render_as_string(hide_password=False), connect_args
 
 
