@@ -23,7 +23,8 @@ from .parsers import TRACK_RE
 from .utils import webapp_button
 
 router = Router()
-scheduler: AsyncIOScheduler | None = None
+scheduler = AsyncIOScheduler()
+jobs_by_chat: dict[int, list[str]] = {}
 
 
 @router.message(CommandStart(deep_link=True))
@@ -125,33 +126,55 @@ async def cmd_schedule(message: Message) -> None:
 
 async def schedule_plan_reminders(bot: Bot, chat_id: int, plan: dict) -> None:
     """Schedule workout reminders for the user based on their plan."""
-    global scheduler
-    if scheduler is None:
-        scheduler = AsyncIOScheduler()
+    if not scheduler.running:
         scheduler.start()
+    # Cancel existing jobs for this chat_id
+    for job_id in jobs_by_chat.pop(chat_id, []):
+        try:
+            scheduler.remove_job(job_id)
+        except Exception:
+            logging.exception("Failed to remove existing job %s", job_id)
+
     tzname = plan.get("timezone") or "UTC"
+    new_job_ids: list[str] = []
     for day in plan.get("days", []):
         wd = day.get("weekday")
         time_str = day.get("time", "18:00")
         focus = day.get("focus", "Workout")
         for week in range(plan.get("weeks", 1)):
-            dt = _next_datetime_for(wd, time_str, tzname, weeks_ahead=week)
+            try:
+                dt = _next_datetime_for(wd, time_str, tzname, weeks_ahead=week)
+            except ValueError as e:
+                logging.warning("Skipping reminder due to invalid input: %s", e)
+                continue
             remind_at = dt - timedelta(minutes=60)
             if remind_at < datetime.now(tz=remind_at.tzinfo):
                 continue
-            # Use partial to avoid closure issues with loop variables
-            scheduler.add_job(
+            job = scheduler.add_job(
                 partial(bot.send_message, chat_id, f"⏰ {focus} at {time_str}. Ready?"),
                 trigger=DateTrigger(run_date=remind_at),
             )
+            new_job_ids.append(job.id)
+    if new_job_ids:
+        jobs_by_chat[chat_id] = new_job_ids
+
+
+WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def _next_datetime_for(weekday: str, time_str: str, tzname: str, weeks_ahead: int = 0) -> datetime:
     """Compute the next datetime for a given weekday and time in the specified timezone."""
+    if weekday not in WEEKDAYS:
+        raise ValueError(f"Invalid weekday: {weekday}")
+    try:
+        hour, minute = map(int, time_str.split(":", 1))
+    except Exception as exc:  # pragma: no cover - defensive
+        raise ValueError(f"Invalid time: {time_str}") from exc
+    if not (0 <= hour < 24 and 0 <= minute < 60):
+        raise ValueError(f"Invalid time: {time_str}")
     tz = ZoneInfo(tzname) if tzname else ZoneInfo("UTC")
     now = datetime.now(tz=tz)
-    hour, minute = map(int, time_str.split(":", 1))
-    target_wd = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].index(weekday)
+    target_wd = WEEKDAYS.index(weekday)
     days_ahead = (target_wd - now.weekday() + 7) % 7 + weeks_ahead * 7
     target_date = (now + timedelta(days=days_ahead)).replace(
         hour=hour, minute=minute, second=0, microsecond=0
@@ -188,10 +211,17 @@ async def cmd_ask(message: Message) -> None:
             headers = {"Authorization": f"Bearer {_S.OPENAI_API_KEY}"}
             payload = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": q}]}
             async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
-                r = await client.post("https://api.openai.com/v1/chat/completions", json=payload)
-                r.raise_for_status()
-                ans = r.json()["choices"][0]["message"]["content"]
-                await message.answer(ans)
+                try:
+                    r = await client.post("https://api.openai.com/v1/chat/completions", json=payload)
+                    r.raise_for_status()
+                    ans = r.json()["choices"][0]["message"]["content"].strip()
+                except httpx.HTTPError as e:
+                    logging.warning("OpenAI request failed: %s", e)
+                    await message.answer("OpenAI seems busy right now, please try again later.")
+                    return
+            if len(ans) > 500:
+                ans = ans[:500] + "..."
+            await message.answer(ans)
         else:
             await message.answer(
                 "(No OpenAI key) My quick take: stay consistent, use good form, progressive overload."

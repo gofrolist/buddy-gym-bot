@@ -23,7 +23,10 @@ router = APIRouter()
 
 @router.get("/share/workout.png")
 async def share_png(
-    uid: int = Query(..., description="Telegram user id"), session_id: str = "last"
+    uid: int = Query(..., description="Telegram user id"),
+    session_id: str = Query(
+        "last", pattern=r"^(last|\d+)$", description="Workout session id or 'last'"
+    ),
 ) -> Response:
     """
     Generate a PNG image summarizing a user's workout session.
@@ -47,9 +50,13 @@ async def share_png(
                 )
                 ws = ress.scalar_one_or_none()
             else:
+                try:
+                    sid = int(session_id)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail="Invalid session_id") from exc
                 ress = await s.execute(
                     select(WorkoutSession).where(
-                        WorkoutSession.user_id == user.id, WorkoutSession.id == int(session_id)
+                        WorkoutSession.user_id == user.id, WorkoutSession.id == sid
                     )
                 )
                 ws = ress.scalar_one_or_none()

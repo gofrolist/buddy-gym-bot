@@ -33,13 +33,14 @@ async def init_db() -> None:
     if not SETTINGS.DATABASE_URL:
         logging.error("DATABASE_URL is required for DB initialization.")
         raise RuntimeError("DATABASE_URL is required")
+    connect_args = {}
+    if not SETTINGS.DATABASE_URL.startswith("sqlite"):
+        connect_args = {"statement_cache_size": 0}
     _engine = create_async_engine(
         SETTINGS.DATABASE_URL,
         echo=False,
         pool_pre_ping=True,
-        connect_args={
-            "statement_cache_size": 0,
-        },
+        connect_args=connect_args,
     )
     _session = async_sessionmaker(_engine, expire_on_commit=False)
     async with _engine.begin() as conn:
@@ -150,6 +151,9 @@ async def fulfil_referral_for_invitee(invitee_tg_id: int) -> bool:
         res_inv = await s.execute(select(User).where(User.tg_id == invitee_tg_id))
         invitee = res_inv.scalar_one_or_none()
         if not invitee:
+            return False
+        # Invitee must have logged at least one set before referral is fulfilled
+        if not await _user_has_any_sets(invitee.id):
             return False
         res_ref = await s.execute(
             select(Referral)
