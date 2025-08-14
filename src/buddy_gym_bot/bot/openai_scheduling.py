@@ -126,7 +126,7 @@ async def generate_schedule(text: str, tz: str = "UTC") -> dict[str, Any]:
     try:
         headers = {"Authorization": f"Bearer {SETTINGS.OPENAI_API_KEY}"}
         payload = {
-            "model": "gpt-4o-mini",
+            "model": "gpt-5-mini",
             "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},

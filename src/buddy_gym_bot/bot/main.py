@@ -212,7 +212,7 @@ async def cmd_ask(message: Message) -> None:
 
         if _S.OPENAI_API_KEY:
             headers = {"Authorization": f"Bearer {_S.OPENAI_API_KEY}"}
-            payload = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": q}]}
+            payload = {"model": "gpt-5-mini", "messages": [{"role": "user", "content": q}]}
             async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
                 try:
                     r = await client.post(
