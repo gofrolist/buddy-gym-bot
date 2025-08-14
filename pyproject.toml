@@ -21,7 +21,9 @@ dependencies = [
   "sqlalchemy",
   "Pillow",
   "asyncpg",
+  "aiosqlite",
   "Babel",
+  "apscheduler",
 ]
 
 [project.optional-dependencies]
@@ -32,6 +34,7 @@ dev = [
 ]
 test = [
   "pytest",
+  "pytest-asyncio",
 ]
 
 [tool.ruff]
