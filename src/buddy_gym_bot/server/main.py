@@ -4,17 +4,21 @@ Handles CORS, static webapp, error handling, and API routers.
 """
 
 from __future__ import annotations
-import logging, os
+
+import logging
+import os
+
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from .routes.exercises import router as r_exercises
-from .routes.workout import router as r_workout
-from .routes.share import router as r_share
+
 from ..config import SETTINGS
-from ..logging_setup import setup_logging
 from ..db import repo
+from ..logging_setup import setup_logging
+from .routes.exercises import router as r_exercises
+from .routes.share import router as r_share
+from .routes.workout import router as r_workout
 
 app = FastAPI(title="BuddyGym API")
 
@@ -22,6 +26,7 @@ app = FastAPI(title="BuddyGym API")
 allowed = set()
 try:
     from urllib.parse import urlparse
+
     u = urlparse(SETTINGS.WEBAPP_URL)
     origin = f"{u.scheme}://{u.netloc}"
     allowed.add(origin)
@@ -42,6 +47,7 @@ static_dir = os.path.join(os.getcwd(), "static", "webapp")
 if os.path.isdir(static_dir):
     app.mount("/webapp", StaticFiles(directory=static_dir, html=True), name="webapp")
 
+
 @app.on_event("startup")
 async def _startup() -> None:
     """
@@ -50,8 +56,9 @@ async def _startup() -> None:
     setup_logging()
     try:
         await repo.init_db()
-    except Exception as e:
+    except Exception:
         logging.exception("DB init failed")
+
 
 @app.exception_handler(Exception)
 async def global_exc_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -61,12 +68,14 @@ async def global_exc_handler(request: Request, exc: Exception) -> JSONResponse:
     logging.exception("Unhandled error")
     return JSONResponse({"ok": False, "error": "internal"}, status_code=500)
 
+
 @app.get("/healthz")
 async def healthz() -> dict:
     """
     Health check endpoint.
     """
     return {"ok": True}
+
 
 # Routers for API endpoints
 app.include_router(r_exercises, prefix="/api/v1")

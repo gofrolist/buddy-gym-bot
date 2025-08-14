@@ -1,13 +1,18 @@
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List
+from typing import Any
+
 import httpx
+
 from .config import SETTINGS
+
 
 class ExerciseDBClient:
     """
     Client for querying the ExerciseDB API, supporting both RapidAPI and direct endpoints.
     """
+
     def __init__(self) -> None:
         self.base = SETTINGS.EXERCISEDB_BASE_URL
         self.rapid_key = SETTINGS.EXERCISEDB_RAPIDAPI_KEY

@@ -1,11 +1,13 @@
 import json
-import os
 import logging
-from aiogram.types import BotCommand, BotCommandScopeDefault
+import os
+
 from aiogram import Bot
+from aiogram.types import BotCommand, BotCommandScopeDefault
 
 LOCALES_DIR = os.path.join(os.path.dirname(__file__), "locales")
 LANGUAGES = ("en", "ru")
+
 
 async def apply_localized_commands(bot: Bot) -> None:
     """
@@ -14,7 +16,7 @@ async def apply_localized_commands(bot: Bot) -> None:
     for lang in LANGUAGES:
         path = os.path.join(LOCALES_DIR, lang, "commands.json")
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             cmds = [BotCommand(command=k, description=v) for k, v in data.items()]
             await bot.set_my_commands(cmds, language_code=lang, scope=BotCommandScopeDefault())

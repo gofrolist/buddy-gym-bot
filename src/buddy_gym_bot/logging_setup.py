@@ -1,12 +1,16 @@
 import logging
 import traceback
+
 import httpx
+
 from .config import SETTINGS
+
 
 class TelegramErrorHandler(logging.Handler):
     """
     Logging handler that sends error logs to a Telegram chat via the bot API.
     """
+
     def emit(self, record: logging.LogRecord) -> None:
         if not SETTINGS.FF_ADMIN_ALERTS:
             return
@@ -16,7 +20,7 @@ class TelegramErrorHandler(logging.Handler):
             msg = self.format(record)
             # Compact stack if exists
             if record.exc_info:
-                exc_text = ''.join(traceback.format_exception(*record.exc_info))
+                exc_text = "".join(traceback.format_exception(*record.exc_info))
                 truncated = False
                 if len(exc_text) > 3500:
                     exc_text = exc_text[-3500:]
@@ -33,6 +37,7 @@ class TelegramErrorHandler(logging.Handler):
             httpx.post(url, data=data, timeout=5.0)
         except Exception as e:
             logging.getLogger(__name__).error("Failed to send log to Telegram: %s", e)
+
 
 def setup_logging(level: int = logging.INFO) -> None:
     """

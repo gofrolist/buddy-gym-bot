@@ -1,18 +1,27 @@
 """
 Async SQLAlchemy repository for BuddyGym database operations.
 """
+
 from __future__ import annotations
-import secrets
-from datetime import datetime, timezone
-from typing import Optional, Tuple
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine, async_sessionmaker, AsyncSession
-from sqlalchemy import select, func, update
-from .models import Base, User, Referral, ReferralStatus, WorkoutSession, SetRow
-from ..config import SETTINGS
+
 import logging
+import secrets
+from datetime import UTC, datetime
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from ..config import SETTINGS
+from .models import Base, Referral, SetRow, User, WorkoutSession
 
 _engine: AsyncEngine | None = None
 _session: async_sessionmaker[AsyncSession] | None = None
+
 
 async def init_db() -> None:
     """
@@ -36,6 +45,7 @@ async def init_db() -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+
 def get_session() -> async_sessionmaker[AsyncSession]:
     """
     Get the async sessionmaker. Raises if DB is not initialized.
@@ -44,7 +54,8 @@ def get_session() -> async_sessionmaker[AsyncSession]:
         raise RuntimeError("DB not initialized; call init_db() first")
     return _session
 
-async def upsert_user(tg_id: int, handle: Optional[str], lang: Optional[str]) -> User:
+
+async def upsert_user(tg_id: int, handle: str | None, lang: str | None) -> User:
     """
     Insert or update a user by Telegram ID. Updates handle/lang if changed.
     """
@@ -69,7 +80,8 @@ async def upsert_user(tg_id: int, handle: Optional[str], lang: Optional[str]) ->
                 await s.commit()
         return user
 
-async def get_user_by_tg(tg_id: int) -> Optional[User]:
+
+async def get_user_by_tg(tg_id: int) -> User | None:
     """
     Get a user by their Telegram ID.
     """
@@ -77,6 +89,7 @@ async def get_user_by_tg(tg_id: int) -> Optional[User]:
     async with sessmaker() as s:
         res = await s.execute(select(User).where(User.tg_id == tg_id))
         return res.scalar_one_or_none()
+
 
 async def ensure_referral_token(inviter_user_id: int) -> str:
     """
@@ -90,6 +103,7 @@ async def ensure_referral_token(inviter_user_id: int) -> str:
         s.add(ref)
         await s.commit()
         return token
+
 
 async def record_referral_click(invitee_tg_id: int, token: str) -> None:
     """
@@ -111,14 +125,20 @@ async def record_referral_click(invitee_tg_id: int, token: str) -> None:
         ref.invitee_user_id = invitee.id
         await s.commit()
 
+
 async def _user_has_any_sets(user_id: int) -> bool:
     """
     Check if a user has any logged sets.
     """
     sessmaker = get_session()
     async with sessmaker() as s:
-        res = await s.execute(select(func.count(SetRow.id)).join(WorkoutSession).where(WorkoutSession.user_id == user_id))
+        res = await s.execute(
+            select(func.count(SetRow.id))
+            .join(WorkoutSession)
+            .where(WorkoutSession.user_id == user_id)
+        )
         return (res.scalar() or 0) > 0
+
 
 async def fulfil_referral_for_invitee(invitee_tg_id: int) -> bool:
     """
@@ -147,11 +167,12 @@ async def fulfil_referral_for_invitee(invitee_tg_id: int) -> bool:
         host.add_premium_days(ref.reward_days)
         invitee.add_premium_days(ref.reward_days)
         ref.status = "FULFILLED"
-        ref.fulfilled_at = datetime.now(timezone.utc)
+        ref.fulfilled_at = datetime.now(UTC)
         await s.commit()
         return True
 
-async def start_session(user_id: int, title: Optional[str] = None) -> WorkoutSession:
+
+async def start_session(user_id: int, title: str | None = None) -> WorkoutSession:
     """
     Start a new workout session for a user.
     """
@@ -163,19 +184,35 @@ async def start_session(user_id: int, title: Optional[str] = None) -> WorkoutSes
         await s.refresh(ws)
         return ws
 
-async def append_set(session_id: int, exercise: str, weight_kg: float, reps: int, rpe: Optional[float], is_warmup: bool=False) -> SetRow:
+
+async def append_set(
+    session_id: int,
+    exercise: str,
+    weight_kg: float,
+    reps: int,
+    rpe: float | None,
+    is_warmup: bool = False,
+) -> SetRow:
     """
     Append a set to a workout session.
     """
     sessmaker = get_session()
     async with sessmaker() as s:
-        row = SetRow(session_id=session_id, exercise=exercise, weight_kg=weight_kg, reps=reps, rpe=rpe, is_warmup=is_warmup)
+        row = SetRow(
+            session_id=session_id,
+            exercise=exercise,
+            weight_kg=weight_kg,
+            reps=reps,
+            rpe=rpe,
+            is_warmup=is_warmup,
+        )
         s.add(row)
         await s.commit()
         await s.refresh(row)
         return row
 
-async def last_best_set(user_id: int, exercise: str) -> Optional[Tuple[int, float, int]]:
+
+async def last_best_set(user_id: int, exercise: str) -> tuple[int, float, int] | None:
     """
     Get the best (heaviest x reps) set for a user and exercise.
     Returns (set_id, weight_kg, reps) or None.

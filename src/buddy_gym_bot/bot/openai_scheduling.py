@@ -1,8 +1,11 @@
 from __future__ import annotations
-from typing import Any, Dict
+
 import json
-import httpx
 import logging
+from typing import Any
+
+import httpx
+
 from ..config import SETTINGS
 
 SYSTEM_PROMPT = (
@@ -12,54 +15,58 @@ SYSTEM_PROMPT = (
 )
 
 SCHEMA = {
-  "type": "object",
-  "properties": {
-    "program_name": {"type": "string"},
-    "weeks": {"type": "integer", "minimum": 1},
-    "days_per_week": {"type": "integer", "minimum": 1, "maximum": 7},
-    "timezone": {"type": "string"},
-    "days": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "weekday": {"type": "string", "enum": ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]},
-          "focus": {"type": "string"},
-          "time": {"type": "string"},
-          "duration_min": {"type": "integer"},
-          "exercises": {
+    "type": "object",
+    "properties": {
+        "program_name": {"type": "string"},
+        "weeks": {"type": "integer", "minimum": 1},
+        "days_per_week": {"type": "integer", "minimum": 1, "maximum": 7},
+        "timezone": {"type": "string"},
+        "days": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "name": {"type": "string"},
-                "equipment_ok": {"type": "array", "items": {"type": "string"}},
-                "target": {"type": "string"},
-                "sets": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "reps": {"type": "string"},
-                      "load": {"type": "string"},
-                      "rest_sec": {"type": "integer"}
+                "type": "object",
+                "properties": {
+                    "weekday": {
+                        "type": "string",
+                        "enum": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
                     },
-                    "required": ["reps"]
-                  }
-                }
-              },
-              "required": ["name", "sets"]
-            }
-          }
+                    "focus": {"type": "string"},
+                    "time": {"type": "string"},
+                    "duration_min": {"type": "integer"},
+                    "exercises": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "equipment_ok": {"type": "array", "items": {"type": "string"}},
+                                "target": {"type": "string"},
+                                "sets": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "reps": {"type": "string"},
+                                            "load": {"type": "string"},
+                                            "rest_sec": {"type": "integer"},
+                                        },
+                                        "required": ["reps"],
+                                    },
+                                },
+                            },
+                            "required": ["name", "sets"],
+                        },
+                    },
+                },
+                "required": ["weekday", "exercises"],
+            },
         },
-        "required": ["weekday", "exercises"]
-      }
-    }
-  },
-  "required": ["program_name", "weeks", "days_per_week", "days"]
+    },
+    "required": ["program_name", "weeks", "days_per_week", "days"],
 }
 
-def deterministic_fallback(text: str, tz: str = "UTC") -> Dict[str, Any]:
+
+def deterministic_fallback(text: str, tz: str = "UTC") -> dict[str, Any]:
     """
     Return a simple fixed plan for Mon/Wed/Fri 18:00 as a fallback if OpenAI is unavailable.
     """
@@ -68,43 +75,49 @@ def deterministic_fallback(text: str, tz: str = "UTC") -> Dict[str, Any]:
         "weeks": 4,
         "days_per_week": 3,
         "timezone": tz,
-        "days": []
+        "days": [],
     }
-    days = [
-        ("Mon", "Full Body A"),
-        ("Wed", "Upper Body"),
-        ("Fri", "Lower Body")
-    ]
+    days = [("Mon", "Full Body A"), ("Wed", "Upper Body"), ("Fri", "Lower Body")]
     for wk, (wd, focus) in enumerate(days):
-        plan["days"].append({
-            "weekday": wd,
-            "focus": focus,
-            "time": "18:00",
-            "duration_min": 40,
-            "exercises": [
-                {
-                    "name": "Barbell Squat",
-                    "target": "quads",
-                    "equipment_ok": ["barbell"],
-                    "sets": [{"reps": "5", "load": "moderate", "rest_sec": 120} for _ in range(3)]
-                },
-                {
-                    "name": "Bench Press",
-                    "target": "chest",
-                    "equipment_ok": ["barbell", "dumbbell"],
-                    "sets": [{"reps": "5", "load": "moderate", "rest_sec": 120} for _ in range(3)]
-                },
-                {
-                    "name": "Lat Pulldown",
-                    "target": "lats",
-                    "equipment_ok": ["cable"],
-                    "sets": [{"reps": "10-12", "load": "light-moderate", "rest_sec": 90} for _ in range(3)]
-                }
-            ]
-        })
+        plan["days"].append(
+            {
+                "weekday": wd,
+                "focus": focus,
+                "time": "18:00",
+                "duration_min": 40,
+                "exercises": [
+                    {
+                        "name": "Barbell Squat",
+                        "target": "quads",
+                        "equipment_ok": ["barbell"],
+                        "sets": [
+                            {"reps": "5", "load": "moderate", "rest_sec": 120} for _ in range(3)
+                        ],
+                    },
+                    {
+                        "name": "Bench Press",
+                        "target": "chest",
+                        "equipment_ok": ["barbell", "dumbbell"],
+                        "sets": [
+                            {"reps": "5", "load": "moderate", "rest_sec": 120} for _ in range(3)
+                        ],
+                    },
+                    {
+                        "name": "Lat Pulldown",
+                        "target": "lats",
+                        "equipment_ok": ["cable"],
+                        "sets": [
+                            {"reps": "10-12", "load": "light-moderate", "rest_sec": 90}
+                            for _ in range(3)
+                        ],
+                    },
+                ],
+            }
+        )
     return plan
 
-async def generate_schedule(text: str, tz: str = "UTC") -> Dict[str, Any]:
+
+async def generate_schedule(text: str, tz: str = "UTC") -> dict[str, Any]:
     """
     Generate a workout schedule using OpenAI if API key is set, otherwise use deterministic fallback.
     """
@@ -117,8 +130,11 @@ async def generate_schedule(text: str, tz: str = "UTC") -> Dict[str, Any]:
             "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"Timezone: {tz}\nRequest: {text}\nSchema: {json.dumps(SCHEMA)}"}
-            ]
+                {
+                    "role": "user",
+                    "content": f"Timezone: {tz}\nRequest: {text}\nSchema: {json.dumps(SCHEMA)}",
+                },
+            ],
         }
         async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
             r = await client.post("https://api.openai.com/v1/chat/completions", json=payload)
