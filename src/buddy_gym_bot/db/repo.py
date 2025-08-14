@@ -68,6 +68,13 @@ async def init_db() -> None:
     )
     _session = async_sessionmaker(_engine, expire_on_commit=False)
     async with _engine.begin() as conn:
+        for table in ("users", "workouts", "logs"):
+            try:
+                await conn.exec_driver_sql(
+                    f"ALTER TABLE {table} RENAME COLUMN tg_user_id TO tg_id"
+                )
+            except Exception:
+                pass
         await conn.run_sync(Base.metadata.create_all)
 
 
