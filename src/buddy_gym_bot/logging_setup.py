@@ -21,11 +21,9 @@ class TelegramErrorHandler(logging.Handler):
             # Compact stack if exists
             if record.exc_info:
                 exc_text = "".join(traceback.format_exception(*record.exc_info))
-                truncated = False
                 if len(exc_text) > 3500:
                     exc_text = exc_text[-3500:]
                     exc_text = "[truncated]\n" + exc_text
-                    truncated = True
                 msg = f"{msg}\n\n<pre>{exc_text}</pre>"
             url = f"https://api.telegram.org/bot{SETTINGS.BOT_TOKEN}/sendMessage"
             data = {

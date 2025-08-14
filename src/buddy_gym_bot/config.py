@@ -84,4 +84,4 @@ class Config(BaseSettings):
         return v
 
 
-SETTINGS = Config()
+SETTINGS = Config()  # pyright: ignore[reportCallIssue]

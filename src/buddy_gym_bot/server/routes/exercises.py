@@ -23,8 +23,8 @@ async def exercises_search(q: str = Query(..., min_length=1), limit: int = 10) -
     client = ExerciseDBClient()
     try:
         items = await client.search(q, limit=limit)
-    except Exception:
+    except Exception as err:
         logging.exception("ExerciseDB search failed")
         # mask remote errors
-        raise HTTPException(status_code=502, detail="Upstream error")
+        raise HTTPException(status_code=502, detail="Upstream error") from err
     return {"ok": True, "items": items}
