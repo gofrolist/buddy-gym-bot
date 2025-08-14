@@ -17,7 +17,10 @@ def _bool(name: str, default: bool) -> bool:
 
 def _norm_db_url(url: str | None) -> str | None:
     """
-    Normalize database URL to use asyncpg driver for SQLAlchemy.
+    Normalize database URL to use async drivers for SQLAlchemy.
+
+    Ensures ``postgres`` URLs use ``asyncpg`` and plain ``sqlite`` URLs use
+    ``aiosqlite``. URLs already specifying an async driver are returned as-is.
     """
     if not url:
         return None
@@ -25,6 +28,8 @@ def _norm_db_url(url: str | None) -> str | None:
         url = "postgresql+asyncpg://" + url[len("postgres://") :]
     if url.startswith("postgresql://"):
         url = "postgresql+asyncpg://" + url[len("postgresql://") :]
+    if url.startswith("sqlite://"):
+        url = "sqlite+aiosqlite://" + url[len("sqlite://") :]
     return url
 
 
