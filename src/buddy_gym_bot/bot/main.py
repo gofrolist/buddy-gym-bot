@@ -7,10 +7,10 @@ from functools import partial
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot, Dispatcher, Router
+from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
-from aiogram.client.default import DefaultBotProperties
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # pyright: ignore[reportMissingImports]
 from apscheduler.triggers.date import DateTrigger  # pyright: ignore[reportMissingImports]
 
@@ -242,15 +242,22 @@ async def on_startup(bot: Bot) -> None:
     await apply_localized_commands(bot)
 
 
+def create_dispatcher(bot: Bot) -> Dispatcher:
+    """Create dispatcher with all routers and startup handlers."""
+    dp = Dispatcher()
+    dp.include_router(router)
+    dp.startup.register(lambda: on_startup(bot))
+    return dp
+
+
 def main() -> None:
     """Entrypoint for the bot application."""
+    if SETTINGS.USE_WEBHOOK:
+        raise SystemExit("USE_WEBHOOK is enabled; polling is disabled")
     if not SETTINGS.BOT_TOKEN:
         raise SystemExit("BOT_TOKEN is required")
     bot = Bot(SETTINGS.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = Dispatcher()
-    dp.include_router(router)
-    # Use lambda to pass bot instance to on_startup
-    dp.startup.register(lambda: on_startup(bot))
+    dp = create_dispatcher(bot)
     asyncio.run(dp.start_polling(bot))
 
 
