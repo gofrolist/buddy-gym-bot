@@ -222,4 +222,13 @@ site
 
 # flyctl launch added from dist/.gitignore
 dist/**/*
+
+# Docker files
+.git
+__pycache__
+*.pyc
+node_modules
+webapp/node_modules
+dist
+.env
 fly.toml

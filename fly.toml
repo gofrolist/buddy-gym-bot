@@ -55,4 +55,4 @@ primary_region = 'lax'
   cpus = 1
 
 [deploy]
-  release_command = "pybabel compile -d src/bot/locales -D messages -f"
+  release_command = "pybabel compile -d .venv/lib/python3.13/site-packages/buddy_gym_bot/bot/locales/ -D messages -f "

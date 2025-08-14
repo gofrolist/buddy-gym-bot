@@ -1,0 +1,12 @@
+msgid ""
+msgstr ""
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "welcome"
+msgstr "Welcome to BuddyGym!"
+
+msgid "plan_created"
+msgstr "Plan created ✅ I’ll remind you before workouts."

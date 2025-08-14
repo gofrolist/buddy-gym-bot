@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "buddy-gym-bot"
-version = "0.1.0"
+version = "0.2.0"
 description = "Telegram buddy gym chatbot"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -13,6 +13,15 @@ dependencies = [
   "psycopg[binary]==3.2.9",
   "python-dotenv==1.1.1",
   "openai>=1.99.2,<2",
+  "uvicorn[standard]==0.35.0",
+  "fastapi",
+  "pydantic",
+  "pydantic-settings",
+  "httpx",
+  "sqlalchemy",
+  "Pillow",
+  "asyncpg",
+  "Babel",
 ]
 
 [project.optional-dependencies]
