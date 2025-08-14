@@ -41,9 +41,7 @@ class TelegramErrorHandler(logging.Handler):
                     async with httpx.AsyncClient(timeout=5.0) as client:
                         await client.post(url, data=data)
                 except Exception as e:  # pragma: no cover - network
-                    logging.getLogger(__name__).error(
-                        "Failed to send log to Telegram: %s", e
-                    )
+                    logging.getLogger(__name__).error("Failed to send log to Telegram: %s", e)
 
             try:
                 task = asyncio.create_task(_post())
@@ -53,9 +51,7 @@ class TelegramErrorHandler(logging.Handler):
                 try:
                     httpx.post(url, data=data, timeout=5.0)
                 except Exception as e:  # pragma: no cover - network
-                    logging.getLogger(__name__).error(
-                        "Failed to send log to Telegram: %s", e
-                    )
+                    logging.getLogger(__name__).error("Failed to send log to Telegram: %s", e)
         except Exception as e:
             logging.getLogger(__name__).error("Failed to send log to Telegram: %s", e)
 

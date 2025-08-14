@@ -212,7 +212,9 @@ async def cmd_ask(message: Message) -> None:
             payload = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": q}]}
             async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
                 try:
-                    r = await client.post("https://api.openai.com/v1/chat/completions", json=payload)
+                    r = await client.post(
+                        "https://api.openai.com/v1/chat/completions", json=payload
+                    )
                     r.raise_for_status()
                     ans = r.json()["choices"][0]["message"]["content"].strip()
                 except httpx.HTTPError as e:
