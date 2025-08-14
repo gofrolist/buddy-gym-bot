@@ -27,6 +27,7 @@ test:
 .PHONY: precommit
 precommit:
 	uv run pre-commit autoupdate
+	uv run pre-commit install-hooks
 	uv run pre-commit run --all-files
 
 IMAGE ?= ghcr.io/${USER}/buddy-gym-bot:dev
