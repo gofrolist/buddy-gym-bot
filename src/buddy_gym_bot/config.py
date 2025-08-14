@@ -39,6 +39,11 @@ class Config(BaseSettings):
     DATABASE_URL: str = Field(..., description="Database URL")
     OPENAI_API_KEY: str | None = Field(None, description="OpenAI API key")
     WEBAPP_URL: str = Field("https://buddy-gym-bot.fly.dev/webapp/", description="Webapp URL")
+    USE_WEBHOOK: bool = Field(
+        default_factory=lambda: _bool("USE_WEBHOOK", False),
+        description="Use webhook mode instead of polling",
+    )
+    WEBHOOK_URL: str | None = Field(None, description="Public URL for Telegram webhook")
 
     EXERCISEDB_BASE_URL: str = Field(
         "https://exercisedb.dev/api/v1", description="ExerciseDB base URL"
