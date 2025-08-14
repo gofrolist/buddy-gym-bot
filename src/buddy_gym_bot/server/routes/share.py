@@ -59,9 +59,9 @@ async def share_png(
                 select(SetRow).where(SetRow.session_id == ws.id).order_by(SetRow.created_at.asc())
             )
             sets = ressets.scalars().all()
-    except Exception:
+    except Exception as err:
         logging.exception("Failed to fetch user/session/sets for PNG share")
-        raise HTTPException(status_code=500, detail="DB error")
+        raise HTTPException(status_code=500, detail="DB error") from err
 
     # Compute totals
     total_vol = sum((r.weight_kg or 0.0) * (r.reps or 0) for r in sets)
@@ -90,7 +90,7 @@ async def share_png(
     draw.text((30, 120), f"Total Volume: {total_vol:.0f} kg", font=font_small, fill=(210, 210, 210))
     y = 170
     for r in sets[:8]:
-        line = f"• {r.exercise}: {r.weight_kg:g} × {r.reps} " + (
+        line = f"• {r.exercise}: {r.weight_kg:g} x {r.reps} " + (
             f"(RPE {r.rpe:g})" if r.rpe else ""
         )
         draw.text((40, y), line, font=font_small, fill=(220, 220, 220))
@@ -99,7 +99,7 @@ async def share_png(
     buf = io.BytesIO()
     try:
         img.save(buf, format="PNG")
-    except Exception:
+    except Exception as err:
         logging.exception("Failed to render PNG for workout share")
-        raise HTTPException(status_code=500, detail="Image error")
+        raise HTTPException(status_code=500, detail="Image error") from err
     return Response(buf.getvalue(), media_type="image/png")

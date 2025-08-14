@@ -78,7 +78,7 @@ def deterministic_fallback(text: str, tz: str = "UTC") -> dict[str, Any]:
         "days": [],
     }
     days = [("Mon", "Full Body A"), ("Wed", "Upper Body"), ("Fri", "Lower Body")]
-    for wk, (wd, focus) in enumerate(days):
+    for wd, focus in days:
         plan["days"].append(
             {
                 "weekday": wd,

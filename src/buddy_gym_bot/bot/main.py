@@ -10,8 +10,8 @@ from aiogram import Bot, Dispatcher, Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.date import DateTrigger
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # pyright: ignore[reportMissingImports]
+from apscheduler.triggers.date import DateTrigger  # pyright: ignore[reportMissingImports]
 
 from ..config import SETTINGS
 from ..db import repo
@@ -76,7 +76,7 @@ async def cmd_track(message: Message) -> None:
         message.from_user.id, message.from_user.username, message.from_user.language_code
     )
     sess = await repo.start_session(user.id, title="Quick Log")
-    row = await repo.append_set(sess.id, ex, w, r, rpe_val, is_warmup=False)
+    await repo.append_set(sess.id, ex, w, r, rpe_val, is_warmup=False)
     if SETTINGS.FF_REFERRALS:
         try:
             ok = await repo.fulfil_referral_for_invitee(message.from_user.id)
@@ -113,11 +113,14 @@ async def cmd_schedule(message: Message) -> None:
     # Schedule reminders 60 minutes before each day/time
     if SETTINGS.FF_REMINDERS:
         try:
-            await schedule_plan_reminders(message.bot, message.chat.id, plan)
+            bot = message.bot
+            if bot is None:
+                raise RuntimeError("Bot instance is unavailable")
+            await schedule_plan_reminders(bot, message.chat.id, plan)
         except Exception:
             logging.exception("Scheduling reminders failed")
 
-    await message.answer("Plan created ✅ I’ll remind you before workouts.")
+    await message.answer("Plan created ✅ I'll remind you before workouts.")
 
 
 async def schedule_plan_reminders(bot: Bot, chat_id: int, plan: dict) -> None:
@@ -159,7 +162,7 @@ def _next_datetime_for(weekday: str, time_str: str, tzname: str, weeks_ahead: in
 @router.message(Command("today"))
 async def cmd_today(message: Message) -> None:
     """Handle /today command."""
-    await message.answer("Today: 3 sets × 5 reps of a compound lift + accessories. Go crush it! 💪")
+    await message.answer("Today: 3 sets x 5 reps of a compound lift + accessories. Go crush it! 💪")
 
 
 @router.message(Command("stats"))
