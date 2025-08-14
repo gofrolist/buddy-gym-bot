@@ -64,9 +64,7 @@ async def _run_migrations(conn) -> None:
     try:
         pkg_migrations = resources.files("buddy_gym_bot").joinpath("migrations")
         if pkg_migrations.is_dir():
-            paths.extend(
-                p for p in pkg_migrations.iterdir() if p.name.endswith(".sql")
-            )
+            paths.extend(p for p in pkg_migrations.iterdir() if p.name.endswith(".sql"))
     except Exception:
         pass
 
