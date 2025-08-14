@@ -20,7 +20,6 @@ dependencies = [
   "httpx",
   "sqlalchemy",
   "Pillow",
-  "asyncpg",
   "aiosqlite",
   "Babel",
   "apscheduler",

@@ -14,7 +14,7 @@ async def test_init_db_respects_ssl_disable(monkeypatch):
     repo._engine = None
     repo._session = None
     original_url = repo.SETTINGS.DATABASE_URL
-    repo.SETTINGS.DATABASE_URL = "postgresql+asyncpg://user:pass@localhost/db?sslmode=disable"
+    repo.SETTINGS.DATABASE_URL = "postgresql+psycopg://user:pass@localhost/db?sslmode=disable"
 
     captured: dict = {}
 
@@ -46,5 +46,5 @@ async def test_init_db_respects_ssl_disable(monkeypatch):
         repo._engine = None
         repo._session = None
 
-    assert captured["connect_args"]["ssl"] is False
-    assert captured["connect_args"]["statement_cache_size"] == 0
+    assert captured["connect_args"]["sslmode"] == "disable"
+    assert "statement_cache_size" not in captured["connect_args"]
