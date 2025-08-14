@@ -7,7 +7,9 @@ from __future__ import annotations
 import logging
 import secrets
 from datetime import UTC, datetime
+from importlib import resources
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.engine import make_url
@@ -51,11 +53,29 @@ def _prepare_url(url: str) -> tuple[str, dict]:
 
 
 async def _run_migrations(conn) -> None:
-    """Execute .sql migration files sequentially."""
-    migrations_dir = Path(__file__).resolve().parents[3] / "migrations"
-    if not migrations_dir.is_dir():
-        return
-    for path in sorted(migrations_dir.glob("*.sql")):
+    """Execute .sql migration files sequentially.
+
+    Looks for a ``migrations`` directory bundled with the package first,
+    falling back to the repository root when running from source.
+    """
+
+    paths: list[Any] = []
+
+    try:
+        pkg_migrations = resources.files("buddy_gym_bot").joinpath("migrations")
+        if pkg_migrations.is_dir():
+            paths.extend(
+                p for p in pkg_migrations.iterdir() if p.name.endswith(".sql")
+            )
+    except Exception:
+        pass
+
+    if not paths:
+        fs_dir = Path(__file__).resolve().parents[2] / "migrations"
+        if fs_dir.is_dir():
+            paths = [p for p in fs_dir.iterdir() if p.suffix == ".sql"]
+
+    for path in sorted(paths, key=lambda p: p.name):
         sql = path.read_text(encoding="utf-8")
         for stmt in sql.split(";"):
             stmt = stmt.strip()
