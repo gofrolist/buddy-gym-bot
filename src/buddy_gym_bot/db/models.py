@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -21,7 +21,7 @@ class User(Base):
 
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
-    tg_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    tg_id: Mapped[int] = mapped_column("tg_user_id", BigInteger, unique=True, index=True)
     handle: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tz: Mapped[str] = mapped_column(String(32), default="UTC")
     units: Mapped[str] = mapped_column(String(8), default="kg")
