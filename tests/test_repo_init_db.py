@@ -14,9 +14,7 @@ async def test_init_db_respects_ssl_disable(monkeypatch):
     repo._engine = None
     repo._session = None
     original_url = repo.SETTINGS.DATABASE_URL
-    repo.SETTINGS.DATABASE_URL = (
-        "postgresql+asyncpg://user:pass@localhost/db?sslmode=disable"
-    )
+    repo.SETTINGS.DATABASE_URL = "postgresql+asyncpg://user:pass@localhost/db?sslmode=disable"
 
     captured: dict = {}
 
