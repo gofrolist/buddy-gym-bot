@@ -1,1 +1,2 @@
 recursive-include src/buddy_gym_bot/webapp *
+recursive-include src/buddy_gym_bot/migrations *
