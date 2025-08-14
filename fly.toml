@@ -21,6 +21,7 @@ primary_region = 'lax'
   bot = "/app/.venv/bin/python -m buddy_gym_bot.bot.main"
 
 [[services]]
+  processes = ["web"]
   protocol = 'tcp'
   internal_port = 8080
   auto_stop_machines = 'stop'
