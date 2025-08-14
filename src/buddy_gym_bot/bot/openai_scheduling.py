@@ -140,8 +140,17 @@ async def generate_schedule(text: str, tz: str = "UTC") -> dict[str, Any]:
             try:
                 r = await client.post("https://api.openai.com/v1/chat/completions", json=payload)
                 r.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code if e.response else "unknown"
+                if status == 401:
+                    logging.warning("OpenAI unauthorized (401). Using deterministic fallback.")
+                else:
+                    logging.warning(
+                        "OpenAI request failed (%s). Using deterministic fallback.", status
+                    )
+                return deterministic_fallback(text, tz)
             except httpx.HTTPError as e:
-                logging.exception("OpenAI request failed: %s", e)
+                logging.warning("OpenAI request failed: %s. Using deterministic fallback.", e)
                 return deterministic_fallback(text, tz)
             content = r.json()["choices"][0]["message"]["content"]
             try:
