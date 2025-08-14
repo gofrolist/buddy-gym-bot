@@ -137,10 +137,18 @@ async def generate_schedule(text: str, tz: str = "UTC") -> dict[str, Any]:
             ],
         }
         async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-            r = await client.post("https://api.openai.com/v1/chat/completions", json=payload)
-            r.raise_for_status()
+            try:
+                r = await client.post("https://api.openai.com/v1/chat/completions", json=payload)
+                r.raise_for_status()
+            except httpx.HTTPError as e:
+                logging.exception("OpenAI request failed: %s", e)
+                return deterministic_fallback(text, tz)
             content = r.json()["choices"][0]["message"]["content"]
-            return json.loads(content)
-    except Exception as e:
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError:
+                logging.exception("Failed to parse OpenAI JSON: %r", content)
+                return deterministic_fallback(text, tz)
+    except Exception as e:  # pragma: no cover - defensive
         logging.exception("OpenAI schedule generation failed, using fallback: %s", e)
         return deterministic_fallback(text, tz)

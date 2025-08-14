@@ -1,9 +1,12 @@
+import asyncio
 import logging
 import traceback
 
 import httpx
 
 from .config import SETTINGS
+
+_tasks: list[asyncio.Task[None]] = []
 
 
 class TelegramErrorHandler(logging.Handler):
@@ -32,7 +35,27 @@ class TelegramErrorHandler(logging.Handler):
                 "parse_mode": "HTML",
                 "disable_web_page_preview": True,
             }
-            httpx.post(url, data=data, timeout=5.0)
+
+            async def _post() -> None:
+                try:
+                    async with httpx.AsyncClient(timeout=5.0) as client:
+                        await client.post(url, data=data)
+                except Exception as e:  # pragma: no cover - network
+                    logging.getLogger(__name__).error(
+                        "Failed to send log to Telegram: %s", e
+                    )
+
+            try:
+                task = asyncio.create_task(_post())
+                _tasks.append(task)
+            except RuntimeError:
+                # No running loop; fall back to blocking call
+                try:
+                    httpx.post(url, data=data, timeout=5.0)
+                except Exception as e:  # pragma: no cover - network
+                    logging.getLogger(__name__).error(
+                        "Failed to send log to Telegram: %s", e
+                    )
         except Exception as e:
             logging.getLogger(__name__).error("Failed to send log to Telegram: %s", e)
 
