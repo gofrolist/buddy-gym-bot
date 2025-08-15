@@ -143,7 +143,6 @@ async def upsert_user(tg_id: int, handle: str | None, lang: str | None) -> User:
             user = User(tg_id=tg_id, handle=handle, last_lang=(lang or "en")[:2])
             s.add(user)
             await s.commit()
-            await s.refresh(user)
         else:
             changed = False
             if handle and user.handle != handle:

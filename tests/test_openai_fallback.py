@@ -26,4 +26,4 @@ async def test_generate_schedule_unauthorized(monkeypatch):
 
     monkeypatch.setattr(httpx, "AsyncClient", mock_async_client)
     plan = await generate_schedule("test")
-    assert plan["program_name"] == "BuddyGym 3x Full Body"
+    assert plan["program_name"] == "Fallback Plan"

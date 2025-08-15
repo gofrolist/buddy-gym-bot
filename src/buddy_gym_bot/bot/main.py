@@ -270,9 +270,7 @@ async def _run() -> None:
     bot = Bot(SETTINGS.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = create_dispatcher(bot)
 
-    # 🔑 DB init happens *before* polling starts:
-    await repo.init_db()
-
+    # Startup tasks (logging, DB init) handled via on_startup
     await dp.start_polling(bot)
 
 
