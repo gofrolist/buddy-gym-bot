@@ -131,6 +131,16 @@ def get_session() -> async_sessionmaker[AsyncSession]:
     return _session
 
 
+async def close_db() -> None:
+    """Dispose of the database engine and reset session state."""
+
+    global _engine, _session
+    if _engine:
+        await _engine.dispose()
+    _engine = None
+    _session = None
+
+
 async def upsert_user(tg_id: int, handle: str | None, lang: str | None) -> User:
     """
     Insert or update a user by Telegram ID. Updates handle/lang if changed.
