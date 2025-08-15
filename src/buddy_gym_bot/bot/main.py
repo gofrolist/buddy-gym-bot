@@ -76,6 +76,9 @@ async def cmd_track(message: Message) -> None:
     ex = m.group("ex")
     w = float(m.group("w"))
     r = int(m.group("r"))
+    if w <= 0 or r <= 0:
+        await message.reply("Weight and reps must be greater than zero.")
+        return
     rpe = m.group("rpe")
     rpe_val = float(rpe) if rpe else None
     user = await repo.upsert_user(
