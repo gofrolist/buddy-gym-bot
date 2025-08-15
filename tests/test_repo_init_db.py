@@ -28,6 +28,9 @@ async def test_init_db_respects_ssl_disable(monkeypatch):
         async def run_sync(self, fn):
             return None
 
+        async def exec_driver_sql(self, sql):
+            return None
+
     class DummyEngine:
         def begin(self):
             return DummyConn()
