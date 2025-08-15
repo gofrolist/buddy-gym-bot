@@ -1,0 +1,36 @@
+services:
+  web:
+    build: .
+    container_name: buddy-gym-web
+    command: uvicorn buddy_gym_bot.server.main:app --host 0.0.0.0 --port 8080
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      USE_WEBHOOK: "false"            # local bot should poll, not use webhooks
+      WEBAPP_URL: "https://d5ce96df81ac.ngrok-free.app"
+      FF_AUTO_I18N: "true"
+      FF_REFERRALS: "true"
+      FF_REMINDERS: "true"
+      FF_SHARE_PNG: "true"
+      FF_ADMIN_ALERTS: "false"
+      FF_EXERCISEDB: "false"
+
+  bot:
+    build: .
+    container_name: buddy-gym-bot
+    command: /app/.venv/bin/python -m buddy_gym_bot.bot.main
+    depends_on:
+      - web
+    env_file:
+      - .env
+    environment:
+      USE_WEBHOOK: "false"            # force polling locally
+      # WEBAPP_URL: "http://localhost:8080/webapp/"
+      FF_AUTO_I18N: "true"
+      FF_REFERRALS: "true"
+      FF_REMINDERS: "true"
+      FF_SHARE_PNG: "true"
+      FF_ADMIN_ALERTS: "false"
+      FF_EXERCISEDB: "false"

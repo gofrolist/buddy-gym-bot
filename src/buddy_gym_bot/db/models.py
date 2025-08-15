@@ -4,6 +4,7 @@ SQLAlchemy ORM models for BuddyGym database tables.
 
 from __future__ import annotations
 
+import enum
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String
@@ -31,7 +32,10 @@ class User(Base):
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 
-    sessions: Mapped[list[WorkoutSession]] = relationship("WorkoutSession", back_populates="user")
+    # CHANGE: Added a cascade rule to ensure sessions are deleted with the user.
+    sessions: Mapped[list[WorkoutSession]] = relationship(
+        "WorkoutSession", back_populates="user", cascade="all, delete-orphan"
+    )
 
     def add_premium_days(self, days: int) -> None:
         """Extend premium_until by a given number of days."""
@@ -43,7 +47,8 @@ class User(Base):
         return f"<User id={self.id} tg_id={self.tg_id} handle={self.handle}>"
 
 
-class ReferralStatus:
+# CHANGE: Converted the ReferralStatus class to a Python Enum for better type safety.
+class ReferralStatus(enum.Enum):
     """Referral status constants."""
 
     PENDING = "PENDING"
@@ -61,7 +66,10 @@ class Referral(Base):
     )
     token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     reward_days: Mapped[int] = mapped_column(Integer, default=30)
-    status: Mapped[str] = mapped_column(String(16), default=ReferralStatus.PENDING, index=True)
+    # CHANGE: Using the Enum for the status column.
+    status: Mapped[ReferralStatus] = mapped_column(
+        String(16), default=ReferralStatus.PENDING, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

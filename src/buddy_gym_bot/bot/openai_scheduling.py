@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -14,25 +15,21 @@ SYSTEM_PROMPT = (
     "Prefer canonical exercise names from ExerciseDB when possible."
 )
 
-SCHEMA = {
+SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "program_name": {"type": "string"},
-        "weeks": {"type": "integer", "minimum": 1},
-        "days_per_week": {"type": "integer", "minimum": 1, "maximum": 7},
         "timezone": {"type": "string"},
+        "weeks": {"type": "integer", "minimum": 1, "maximum": 12},
+        "days_per_week": {"type": "integer", "minimum": 1, "maximum": 7},
         "days": {
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
-                    "weekday": {
-                        "type": "string",
-                        "enum": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-                    },
+                    "weekday": {"type": "integer", "minimum": 0, "maximum": 6},
+                    "time": {"type": "string", "pattern": "^[0-2][0-9]:[0-5][0-9]$"},
                     "focus": {"type": "string"},
-                    "time": {"type": "string"},
-                    "duration_min": {"type": "integer"},
                     "exercises": {
                         "type": "array",
                         "items": {
@@ -66,65 +63,55 @@ SCHEMA = {
 }
 
 
-def deterministic_fallback(text: str, tz: str = "UTC") -> dict[str, Any]:
-    """
-    Return a simple fixed plan for Mon/Wed/Fri 18:00 as a fallback if OpenAI is unavailable.
-    """
-    plan = {
-        "program_name": "BuddyGym 3x Full Body",
-        "weeks": 4,
+def deterministic_fallback(text: str, tz: str) -> dict[str, Any]:
+    return {
+        "program_name": "Fallback Plan",
+        "timezone": tz or "UTC",
+        "weeks": 1,
         "days_per_week": 3,
-        "timezone": tz,
-        "days": [],
-    }
-    days = [("Mon", "Full Body A"), ("Wed", "Upper Body"), ("Fri", "Lower Body")]
-    for wd, focus in days:
-        plan["days"].append(
+        "days": [
             {
-                "weekday": wd,
-                "focus": focus,
+                "weekday": 0,
                 "time": "18:00",
-                "duration_min": 40,
+                "focus": "Full Body",
                 "exercises": [
-                    {
-                        "name": "Barbell Squat",
-                        "target": "quads",
-                        "equipment_ok": ["barbell"],
-                        "sets": [
-                            {"reps": "5", "load": "moderate", "rest_sec": 120} for _ in range(3)
-                        ],
-                    },
-                    {
-                        "name": "Bench Press",
-                        "target": "chest",
-                        "equipment_ok": ["barbell", "dumbbell"],
-                        "sets": [
-                            {"reps": "5", "load": "moderate", "rest_sec": 120} for _ in range(3)
-                        ],
-                    },
-                    {
-                        "name": "Lat Pulldown",
-                        "target": "lats",
-                        "equipment_ok": ["cable"],
-                        "sets": [
-                            {"reps": "10-12", "load": "light-moderate", "rest_sec": 90}
-                            for _ in range(3)
-                        ],
-                    },
+                    {"name": "squat", "sets": [{"reps": "3x5"}]},
+                    {"name": "bench press", "sets": [{"reps": "3x5"}]},
+                    {"name": "row", "sets": [{"reps": "3x8"}]},
                 ],
-            }
-        )
-    return plan
+            },
+            {
+                "weekday": 2,
+                "time": "18:00",
+                "focus": "Full Body",
+                "exercises": [
+                    {"name": "deadlift", "sets": [{"reps": "1x5"}]},
+                    {"name": "overhead press", "sets": [{"reps": "3x5"}]},
+                    {"name": "pull-up", "sets": [{"reps": "3xAMRAP"}]},
+                ],
+            },
+            {
+                "weekday": 4,
+                "time": "18:00",
+                "focus": "Full Body",
+                "exercises": [
+                    {"name": "front squat", "sets": [{"reps": "3x5"}]},
+                    {"name": "incline bench", "sets": [{"reps": "3x8"}]},
+                    {"name": "lat pulldown", "sets": [{"reps": "3x10"}]},
+                ],
+            },
+        ],
+    }
 
 
 async def generate_schedule(text: str, tz: str = "UTC") -> dict[str, Any]:
-    """
-    Generate a workout schedule using OpenAI if API key is set, otherwise use deterministic fallback.
-    """
     if not SETTINGS.OPENAI_API_KEY:
         return deterministic_fallback(text, tz)
     try:
-        headers = {"Authorization": f"Bearer {SETTINGS.OPENAI_API_KEY}"}
+        headers = {
+            "Authorization": f"Bearer {SETTINGS.OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+        }
         payload = {
             "model": "gpt-5-mini",
             "response_format": {"type": "json_object"},
@@ -135,6 +122,7 @@ async def generate_schedule(text: str, tz: str = "UTC") -> dict[str, Any]:
                     "content": f"Timezone: {tz}\nRequest: {text}\nSchema: {json.dumps(SCHEMA)}",
                 },
             ],
+            "temperature": 0,
         }
         async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
             try:

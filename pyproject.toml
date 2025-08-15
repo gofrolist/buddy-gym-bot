@@ -29,7 +29,7 @@ dependencies = [
 dev = [
   "pre-commit",
   "ruff",
-  "pyright"
+  "pyright",
 ]
 test = [
   "pytest",

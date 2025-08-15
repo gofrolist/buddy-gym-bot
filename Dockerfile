@@ -30,7 +30,8 @@ FROM python:3.13.3-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache ttf-dejavu
+RUN apk add --no-cache ttf-dejavu tzdata
+ENV TZ=Etc/UTC
 
 # Copy the environment, but not the source code
 COPY --from=builder /app/.venv /app/.venv

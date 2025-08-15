@@ -67,9 +67,11 @@ async def cmd_track(message: Message) -> None:
     args = text.partition(" ")[2].strip()
     m = TRACK_RE.match(args)
     if not m:
-        await message.reply(
-            "Usage: /track <exercise> <weight>x<reps> [rpeX]\nExample: /track bench 100x5 rpe8"
+        text = (
+            "Usage: /track \\<exercise\\> \\<weight\\>x\\<reps\\> [rpeX]\n"
+            "Example: /track bench 100x5 rpe8"
         )
+        await message.reply(text, parse_mode="MarkdownV2")
         return
     ex = m.group("ex")
     w = float(m.group("w"))
@@ -153,11 +155,18 @@ async def schedule_plan_reminders(bot: Bot, chat_id: int, plan: dict) -> None:
             remind_at = dt - timedelta(minutes=60)
             if remind_at < datetime.now(tz=remind_at.tzinfo):
                 continue
-            job = scheduler.add_job(
+            job_id = f"reminder:{chat_id}:{int(remind_at.timestamp())}"
+            scheduler.add_job(
                 partial(bot.send_message, chat_id, f"⏰ {focus} at {time_str}. Ready?"),
                 trigger=DateTrigger(run_date=remind_at),
+                id=job_id,
+                replace_existing=True,
+                misfire_grace_time=60,
+                coalesce=True,
+                max_instances=1,
+                name=job_id,
             )
-            new_job_ids.append(job.id)
+            new_job_ids.append(job_id)
     if new_job_ids:
         jobs_by_chat[chat_id] = new_job_ids
 
@@ -248,19 +257,27 @@ def create_dispatcher(bot: Bot) -> Dispatcher:
     """Create dispatcher with all routers and startup handlers."""
     dp = Dispatcher()
     dp.include_router(router)
-    dp.startup.register(lambda: on_startup(bot))
+    dp.startup.register(on_startup)
     return dp
 
 
-def main() -> None:
-    """Entrypoint for the bot application."""
+async def _run() -> None:
     if SETTINGS.USE_WEBHOOK:
         raise SystemExit("USE_WEBHOOK is enabled; polling is disabled")
     if not SETTINGS.BOT_TOKEN:
         raise SystemExit("BOT_TOKEN is required")
+
     bot = Bot(SETTINGS.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = create_dispatcher(bot)
-    asyncio.run(dp.start_polling(bot))
+
+    # 🔑 DB init happens *before* polling starts:
+    await repo.init_db()
+
+    await dp.start_polling(bot)
+
+
+def main() -> None:
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

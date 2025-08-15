@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from ..config import SETTINGS
-from .models import Base, Referral, SetRow, User, WorkoutSession
+from .models import Base, Referral, ReferralStatus, SetRow, User, WorkoutSession
 
 _engine: AsyncEngine | None = None
 _session: async_sessionmaker[AsyncSession] | None = None
@@ -38,15 +38,20 @@ def _prepare_url(url: str) -> tuple[str, dict]:
     query = dict(url_obj.query)
     connect_args: dict[str, object] = {}
 
+    # SSL normalization
     sslmode = query.pop("sslmode", None)
     ssl_val = query.pop("ssl", None)
     if ssl_val is not None:
-        if str(ssl_val).lower() in {"0", "false", "off", "no"}:
-            sslmode = "disable"
-        elif str(ssl_val).lower() in {"1", "true", "on", "yes"}:
-            sslmode = "require"
+        sslmode = "disable" if str(ssl_val).lower() in {"0", "false", "off", "no"} else "require"
     if sslmode:
         connect_args["sslmode"] = sslmode
+
+    # 🔑 PgBouncer-friendly settings by driver
+    driver = url_obj.drivername or ""
+    if driver.startswith("postgresql+psycopg"):
+        connect_args.setdefault("prepare_threshold", 0)  # psycopg3
+    elif driver.startswith("postgresql+asyncpg"):
+        connect_args.setdefault("statement_cache_size", 0)  # asyncpg
 
     url_obj = url_obj.set(query=query)
     return url_obj.render_as_string(hide_password=False), connect_args
@@ -100,10 +105,21 @@ async def init_db() -> None:
     )
     _session = async_sessionmaker(_engine, expire_on_commit=False)
     async with _engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        dialect_name = getattr(getattr(conn, "dialect", None), "name", "sqlite")
-        if dialect_name != "sqlite":
+        # discover migrations
+        have_migrations = False
+        try:
+            pkg_migrations = resources.files("buddy_gym_bot").joinpath("migrations")
+            have_migrations = pkg_migrations.is_dir()
+        except Exception:
+            pass
+        if not have_migrations:
+            fs_dir = Path(__file__).resolve().parents[2] / "migrations"
+            have_migrations = fs_dir.is_dir()
+
+        if have_migrations:
             await _run_migrations(conn)
+        else:
+            await conn.run_sync(Base.metadata.create_all)
 
 
 def get_session() -> async_sessionmaker[AsyncSession]:
@@ -216,7 +232,9 @@ async def fulfil_referral_for_invitee(invitee_tg_id: int) -> bool:
             return False
         res_ref = await s.execute(
             select(Referral)
-            .where(Referral.invitee_user_id == invitee.id, Referral.status == "PENDING")
+            .where(
+                Referral.invitee_user_id == invitee.id, Referral.status == ReferralStatus.PENDING
+            )
             .order_by(Referral.created_at.asc())
         )
         ref = res_ref.scalar_one_or_none()
@@ -229,7 +247,7 @@ async def fulfil_referral_for_invitee(invitee_tg_id: int) -> bool:
             return False
         host.add_premium_days(ref.reward_days)
         invitee.add_premium_days(ref.reward_days)
-        ref.status = "FULFILLED"
+        ref.status = ReferralStatus.FULFILLED
         ref.fulfilled_at = datetime.now(UTC)
         await s.commit()
         return True
