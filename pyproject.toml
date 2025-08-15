@@ -23,6 +23,7 @@ dependencies = [
   "aiosqlite",
   "Babel",
   "apscheduler",
+  "httpx[http2]",
 ]
 
 [project.optional-dependencies]

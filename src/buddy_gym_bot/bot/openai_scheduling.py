@@ -15,6 +15,8 @@ SYSTEM_PROMPT = (
     "Prefer canonical exercise names from ExerciseDB when possible."
 )
 
+WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
 SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -27,7 +29,7 @@ SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "weekday": {"type": "integer", "minimum": 0, "maximum": 6},
+                    "weekday": {"type": "string", "enum": WEEKDAYS},
                     "time": {"type": "string", "pattern": "^[0-2][0-9]:[0-5][0-9]$"},
                     "focus": {"type": "string"},
                     "exercises": {
@@ -71,7 +73,7 @@ def deterministic_fallback(text: str, tz: str) -> dict[str, Any]:
         "days_per_week": 3,
         "days": [
             {
-                "weekday": 0,
+                "weekday": "Mon",
                 "time": "18:00",
                 "focus": "Full Body",
                 "exercises": [
@@ -81,7 +83,7 @@ def deterministic_fallback(text: str, tz: str) -> dict[str, Any]:
                 ],
             },
             {
-                "weekday": 2,
+                "weekday": "Wed",
                 "time": "18:00",
                 "focus": "Full Body",
                 "exercises": [
@@ -91,7 +93,7 @@ def deterministic_fallback(text: str, tz: str) -> dict[str, Any]:
                 ],
             },
             {
-                "weekday": 4,
+                "weekday": "Fri",
                 "time": "18:00",
                 "focus": "Full Body",
                 "exercises": [
@@ -113,7 +115,7 @@ async def generate_schedule(text: str, tz: str = "UTC") -> dict[str, Any]:
             "Content-Type": "application/json",
         }
         payload = {
-            "model": "gpt-5-mini",
+            "model": "gpt-4o-mini",
             "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -124,28 +126,44 @@ async def generate_schedule(text: str, tz: str = "UTC") -> dict[str, Any]:
             ],
             "temperature": 0,
         }
-        async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-            try:
-                r = await client.post("https://api.openai.com/v1/chat/completions", json=payload)
-                r.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                status = e.response.status_code if e.response else "unknown"
-                if status == 401:
-                    logging.warning("OpenAI unauthorized (401). Using deterministic fallback.")
-                else:
-                    logging.warning(
-                        "OpenAI request failed (%s). Using deterministic fallback.", status
-                    )
-                return deterministic_fallback(text, tz)
-            except httpx.HTTPError as e:
-                logging.warning("OpenAI request failed: %s. Using deterministic fallback.", e)
-                return deterministic_fallback(text, tz)
-            content = r.json()["choices"][0]["message"]["content"]
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                logging.exception("Failed to parse OpenAI JSON: %r", content)
-                return deterministic_fallback(text, tz)
-    except Exception as e:  # pragma: no cover - defensive
+        timeout = httpx.Timeout(connect=10.0, read=60.0, write=60.0, pool=60.0)
+        async with httpx.AsyncClient(
+            base_url="https://api.openai.com/v1",
+            headers=headers,
+            timeout=timeout,
+            http2=False,
+        ) as client:
+            last_err: Exception | None = None
+            for i in range(3):
+                try:
+                    r = await client.post("/chat/completions", json=payload)
+                    if r.status_code >= 400:
+                        try:
+                            logging.error("openai_error_body: %s", r.text)
+                        except Exception:
+                            pass
+                    r.raise_for_status()
+                    content = r.json()["choices"][0]["message"]["content"]
+                    try:
+                        data = json.loads(content)
+                    except json.JSONDecodeError:
+                        logging.exception("Failed to parse OpenAI JSON: %r", content)
+                        return deterministic_fallback(text, tz)
+                    for d in data.get("days", []):
+                        wd = d.get("weekday")
+                        if isinstance(wd, int) and 0 <= wd <= 6:
+                            d["weekday"] = WEEKDAYS[wd]
+                    return data
+                except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError) as e:
+                    last_err = e
+                    if i < 2:
+                        await asyncio.sleep(0.75 * (2**i))
+                        continue
+                    raise
+                except httpx.HTTPError as e:
+                    last_err = e
+                    raise
+            raise last_err or RuntimeError("OpenAI failure")
+    except Exception as e:
         logging.exception("OpenAI schedule generation failed, using fallback: %s", e)
         return deterministic_fallback(text, tz)
