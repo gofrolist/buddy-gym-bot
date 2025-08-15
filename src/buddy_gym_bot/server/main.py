@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from ..bot.main import on_startup as bot_on_startup
 from ..bot.main import router as tg_router
 from ..config import SETTINGS
+from ..db import close_db
 from .routes.exercises import router as r_exercises
 from .routes.share import router as r_share
 from .routes.workout import router as r_workout
@@ -82,6 +83,7 @@ async def _shutdown() -> None:
     """FastAPI shutdown: clean up bot resources."""
     await bot.delete_webhook()
     await dp.emit_shutdown()
+    await close_db()
     await bot.session.close()
 
 
