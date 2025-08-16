@@ -1,5 +1,6 @@
-import os
 import copy
+import os
+
 import pytest
 
 # Ensure required environment variables are set for config
@@ -9,8 +10,8 @@ os.environ.setdefault("FF_REMINDERS", "0")
 os.environ.setdefault("FF_EXERCISEDB", "0")
 
 from buddy_gym_bot.bot.main import cmd_schedule  # generate_schedule will be patched
-from buddy_gym_bot.db import repo
 from buddy_gym_bot.config import SETTINGS
+from buddy_gym_bot.db import repo
 
 
 class DummyUser:
@@ -45,6 +46,7 @@ async def test_schedule_followup_changes_only_time(monkeypatch):
             def __init__(self, id: int):
                 self.id = id
                 self.tz = "UTC"
+
         return U(user_id)
 
     async def fake_get_user_plan(user_id):
