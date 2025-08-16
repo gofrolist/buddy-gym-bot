@@ -96,6 +96,27 @@ async def cmd_track(message: Message) -> None:
     await message.answer(f"Logged: {ex} {w}x{r}" + (f" RPE{rpe_val:g}" if rpe_val else ""))
 
 
+def render_plan_message(plan: dict) -> str:
+    """Render a human-readable summary of the workout plan."""
+    lines: list[str] = ["Plan created ✅ I'll remind you before workouts."]
+    for day in plan.get("days", []):
+        weekday = day.get("weekday", "?")
+        time = day.get("time")
+        focus = day.get("focus")
+        header = weekday
+        if time:
+            header += f" {time}"
+        if focus:
+            header += f" — {focus}"
+        lines.append(header)
+        for ex in day.get("exercises", []):
+            name = ex.get("name", "exercise")
+            sets = ", ".join(s.get("reps", "") for s in ex.get("sets", []))
+            lines.append(f"• {name}: {sets}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
 @router.message(Command("schedule"))
 async def cmd_schedule(message: Message) -> None:
     """Handle /schedule command to generate a workout plan and schedule reminders."""
@@ -129,7 +150,7 @@ async def cmd_schedule(message: Message) -> None:
         except Exception:
             logging.exception("Scheduling reminders failed")
 
-    await message.answer("Plan created ✅ I'll remind you before workouts.")
+    await message.answer(render_plan_message(plan))
 
 
 async def schedule_plan_reminders(bot: Bot, chat_id: int, plan: dict) -> None:
