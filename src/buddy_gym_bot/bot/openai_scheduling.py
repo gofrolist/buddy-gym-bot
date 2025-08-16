@@ -65,7 +65,11 @@ SCHEMA: dict[str, Any] = {
 }
 
 
-def deterministic_fallback(text: str, tz: str) -> dict[str, Any]:
+def deterministic_fallback(
+    text: str, tz: str, base_plan: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    if base_plan:
+        return base_plan
     return {
         "program_name": "Fallback Plan",
         "timezone": tz or "UTC",
@@ -106,25 +110,41 @@ def deterministic_fallback(text: str, tz: str) -> dict[str, Any]:
     }
 
 
-async def generate_schedule(text: str, tz: str = "UTC") -> dict[str, Any]:
+async def generate_schedule(
+    text: str, tz: str = "UTC", base_plan: dict[str, Any] | None = None
+) -> dict[str, Any]:
     if not SETTINGS.OPENAI_API_KEY:
-        return deterministic_fallback(text, tz)
+        return deterministic_fallback(text, tz, base_plan)
     try:
         headers = {
             "Authorization": f"Bearer {SETTINGS.OPENAI_API_KEY}",
             "Content-Type": "application/json",
         }
-        payload = {
-            "model": "gpt-4o-mini",
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if base_plan:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"Existing plan: {json.dumps(base_plan)}",
+                }
+            )
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"Apply this request: {text}\nSchema: {json.dumps(SCHEMA)}",
+                }
+            )
+        else:
+            messages.append(
                 {
                     "role": "user",
                     "content": f"Timezone: {tz}\nRequest: {text}\nSchema: {json.dumps(SCHEMA)}",
-                },
-            ],
-            "temperature": 0,
+                }
+            )
+        payload = {
+            "model": "gpt-5-mini",
+            "response_format": {"type": "json_object"},
+            "messages": messages,
         }
         timeout = httpx.Timeout(connect=10.0, read=60.0, write=60.0, pool=60.0)
         async with httpx.AsyncClient(
@@ -148,7 +168,7 @@ async def generate_schedule(text: str, tz: str = "UTC") -> dict[str, Any]:
                         data = json.loads(content)
                     except json.JSONDecodeError:
                         logging.exception("Failed to parse OpenAI JSON: %r", content)
-                        return deterministic_fallback(text, tz)
+                        return deterministic_fallback(text, tz, base_plan)
                     for d in data.get("days", []):
                         wd = d.get("weekday")
                         if isinstance(wd, int) and 0 <= wd <= 6:
@@ -166,4 +186,4 @@ async def generate_schedule(text: str, tz: str = "UTC") -> dict[str, Any]:
             raise last_err or RuntimeError("OpenAI failure")
     except Exception as e:
         logging.exception("OpenAI schedule generation failed, using fallback: %s", e)
-        return deterministic_fallback(text, tz)
+        return deterministic_fallback(text, tz, base_plan)

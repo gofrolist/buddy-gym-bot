@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from ..config import SETTINGS
-from .models import Base, Referral, ReferralStatus, SetRow, User, WorkoutSession
+from .models import Base, Referral, ReferralStatus, SetRow, User, UserPlan, WorkoutSession
 
 _engine: AsyncEngine | None = None
 _session: async_sessionmaker[AsyncSession] | None = None
@@ -174,6 +174,37 @@ async def get_user_by_tg(tg_id: int) -> User | None:
     async with sessmaker() as s:
         res = await s.execute(select(User).where(User.tg_id == tg_id))
         return res.scalar_one_or_none()
+
+
+async def get_user_plan(user_id: int) -> dict[str, Any] | None:
+    """Return the latest stored plan for a user."""
+    sessmaker = get_session()
+    async with sessmaker() as s:
+        res = await s.execute(select(UserPlan).where(UserPlan.user_id == user_id))
+        up = res.scalar_one_or_none()
+        return up.plan if up else None
+
+
+async def upsert_user_plan(user_id: int, plan: dict[str, Any]) -> None:
+    """Insert or update the stored plan for a user."""
+    sessmaker = get_session()
+    async with sessmaker() as s:
+        res = await s.execute(select(UserPlan).where(UserPlan.user_id == user_id))
+        up = res.scalar_one_or_none()
+        if up is None:
+            up = UserPlan(
+                user_id=user_id,
+                plan=plan,
+                days_per_week=plan.get("days_per_week", 0),
+                days=plan.get("days", []),
+            )
+            s.add(up)
+        else:
+            up.plan = plan
+            up.days_per_week = plan.get("days_per_week", 0)
+            up.days = plan.get("days", [])
+            up.updated_at = datetime.now(UTC)
+        await s.commit()
 
 
 async def ensure_referral_token(inviter_user_id: int) -> str:

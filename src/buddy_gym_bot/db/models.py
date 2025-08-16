@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import enum
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -119,3 +120,24 @@ class SetRow(Base):
 
     def __repr__(self) -> str:
         return f"<SetRow id={self.id} session_id={self.session_id} exercise={self.exercise} reps={self.reps}>"
+
+
+class UserPlan(Base):
+    """Persisted workout plan for a user."""
+
+    __tablename__ = "user_plans"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    plan: Mapped[dict[str, Any]] = mapped_column(JSON)
+    days_per_week: Mapped[int] = mapped_column(Integer)
+    days: Mapped[list[Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+    user: Mapped[User] = relationship("User")
+
+    def __repr__(self) -> str:  # pragma: no cover - repr is trivial
+        return f"<UserPlan user_id={self.user_id} days_per_week={self.days_per_week}>"
