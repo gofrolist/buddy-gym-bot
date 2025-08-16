@@ -76,6 +76,7 @@ async def _startup() -> None:
             await bot.set_webhook(SETTINGS.WEBHOOK_URL, drop_pending_updates=True)
     except Exception:
         logging.exception("Startup failed")
+        raise
 
 
 @app.on_event("shutdown")
