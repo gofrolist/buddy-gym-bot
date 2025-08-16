@@ -11,7 +11,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from ..config import SETTINGS
-from .models import Base, Referral, ReferralStatus, SetRow, User, WorkoutSession
+from .models import Base, Referral, ReferralStatus, Reminder, SetRow, User, WorkoutSession
 
 _engine: AsyncEngine | None = None
 _session: async_sessionmaker[AsyncSession] | None = None
@@ -318,3 +318,30 @@ async def last_best_set(user_id: int, exercise: str) -> tuple[int, float, int] |
         )
         row = res.first()
         return (row[0], row[1], row[2]) if row else None
+
+
+async def replace_reminders(
+    chat_id: int, reminders: list[tuple[str, datetime, str]]
+) -> None:
+    """Replace reminders for a chat with the provided ones."""
+
+    sessmaker = get_session()
+    async with sessmaker() as s:
+        await s.execute(delete(Reminder).where(Reminder.chat_id == chat_id))
+        for job_id, run_at, message in reminders:
+            s.add(
+                Reminder(
+                    chat_id=chat_id, job_id=job_id, run_at=run_at, message=message
+                )
+            )
+        await s.commit()
+
+
+async def get_pending_reminders() -> list[Reminder]:
+    """Return reminders scheduled for the future."""
+
+    now = datetime.now(UTC)
+    sessmaker = get_session()
+    async with sessmaker() as s:
+        res = await s.execute(select(Reminder).where(Reminder.run_at > now))
+        return list(res.scalars())
