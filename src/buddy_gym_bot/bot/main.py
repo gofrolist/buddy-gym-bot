@@ -119,18 +119,23 @@ def render_plan_message(plan: dict) -> str:
 
 @router.message(Command("schedule"))
 async def cmd_schedule(message: Message) -> None:
-    """Handle /schedule command to generate a workout plan and schedule reminders."""
-    req = (message.text or "").partition(" ")[
-        2
-    ].strip() or "3 days/week, 40 minutes, dumbbells only"
-    tz = "UTC"
+    """Handle /schedule command to generate or modify a workout plan."""
+    req = (message.text or "").partition(" ")[2].strip()
+    user = await repo.upsert_user(
+        message.from_user.id, message.from_user.username, message.from_user.language_code
+    )
+    tz = user.tz or "UTC"
+    stored_plan = None
     try:
-        u = await repo.get_user_by_tg(message.from_user.id)
-        if u and u.tz:
-            tz = u.tz
-    except Exception as e:
-        logging.warning("Failed to get user timezone: %s", e)
-    plan = await generate_schedule(req, tz=tz)
+        stored_plan = await repo.get_user_plan(user.id)
+    except Exception:
+        logging.exception("Failed to load stored plan")
+    if not req and stored_plan:
+        plan = stored_plan
+    else:
+        base = stored_plan if stored_plan else None
+        text = req or "3 days/week, 40 minutes, dumbbells only"
+        plan = await generate_schedule(text, tz=tz, base_plan=base if req else None)
 
     # Optionally enrich with ExerciseDB
     if SETTINGS.FF_EXERCISEDB:
@@ -139,6 +144,11 @@ async def cmd_schedule(message: Message) -> None:
             plan = await client.map_plan_exercises(plan)
         except Exception:
             logging.exception("ExerciseDB enrichment failed")
+
+    try:
+        await repo.upsert_user_plan(user.id, plan)
+    except Exception:
+        logging.exception("Failed to save user plan")
 
     # Schedule reminders 60 minutes before each day/time
     if SETTINGS.FF_REMINDERS:
