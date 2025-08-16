@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from zoneinfo import ZoneInfo
 
@@ -145,6 +145,7 @@ async def schedule_plan_reminders(bot: Bot, chat_id: int, plan: dict) -> None:
 
     tzname = plan.get("timezone") or "UTC"
     new_job_ids: list[str] = []
+    db_records: list[tuple[str, datetime, str]] = []
     for day in plan.get("days", []):
         wd = day.get("weekday")
         time_str = day.get("time", "18:00")
@@ -170,8 +171,35 @@ async def schedule_plan_reminders(bot: Bot, chat_id: int, plan: dict) -> None:
                 name=job_id,
             )
             new_job_ids.append(job_id)
+            db_records.append((job_id, remind_at, f"⏰ {focus} at {time_str}. Ready?"))
     if new_job_ids:
         jobs_by_chat[chat_id] = new_job_ids
+    await repo.replace_reminders(chat_id, db_records)
+
+
+async def load_reminders(bot: Bot) -> None:
+    """Load reminders from the DB and schedule them."""
+    reminders = await repo.get_pending_reminders()
+    if not scheduler.running:
+        scheduler.start()
+    now = datetime.now(UTC)
+    for r in reminders:
+        if r.run_at <= now:
+            continue
+        try:
+            scheduler.add_job(
+                partial(bot.send_message, r.chat_id, r.message),
+                trigger=DateTrigger(run_date=r.run_at),
+                id=r.job_id,
+                replace_existing=True,
+                misfire_grace_time=60,
+                coalesce=True,
+                max_instances=1,
+                name=r.job_id,
+            )
+            jobs_by_chat.setdefault(r.chat_id, []).append(r.job_id)
+        except Exception:
+            logging.exception("Failed to load reminder %s", r.job_id)
 
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -253,6 +281,11 @@ async def on_startup(bot: Bot) -> None:
     """Startup routine: set up logging, initialize DB, and apply localized commands."""
     setup_logging()
     await repo.init_db()
+    if SETTINGS.FF_REMINDERS:
+        try:
+            await load_reminders(bot)
+        except Exception:
+            logging.exception("Failed to load reminders")
     await apply_localized_commands(bot)
 
 

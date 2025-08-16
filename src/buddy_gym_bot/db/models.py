@@ -119,3 +119,18 @@ class SetRow(Base):
 
     def __repr__(self) -> str:
         return f"<SetRow id={self.id} session_id={self.session_id} exercise={self.exercise} reps={self.reps}>"
+
+
+class Reminder(Base):
+    """Scheduled reminder to send a message to a chat at a given time."""
+
+    __tablename__ = "reminders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    job_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    message: Mapped[str] = mapped_column(String(255))
+
+    def __repr__(self) -> str:  # pragma: no cover - simple debug helper
+        return f"<Reminder id={self.id} chat_id={self.chat_id} job_id={self.job_id}>"
