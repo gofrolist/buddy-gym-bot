@@ -180,8 +180,8 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="bg-[#101418] min-h-screen text-white font-['Inter'] relative overflow-hidden">
-      <div className="sticky top-0 z-20 bg-gradient-to-b from-[#101418] to-transparent pt-4">
+    <div className="bg-gray-100 min-h-screen text-gray-900 font-['Inter'] relative overflow-hidden">
+      <div className="sticky top-0 z-20 bg-gradient-to-b from-white to-transparent pt-4">
         <AppBar
           onFinish={() => setIsWorkoutActive(false)}
           onUndo={() => console.log('Undo')}
@@ -201,7 +201,7 @@ const App: React.FC = () => {
           />
         ))}
 
-        <button className="w-full h-14 border border-gray-600 text-gray-400 rounded-2xl border-2 flex items-center justify-center space-x-2">
+        <button className="w-full h-14 border border-gray-300 text-gray-600 rounded-2xl border-2 flex items-center justify-center space-x-2">
           <Plus className="h-5 w-5 mr-2" /> <span>Add Exercise</span>
         </button>
       </div>
@@ -228,17 +228,17 @@ type AppBarProps = {
 const AppBar: React.FC<AppBarProps> = ({ onFinish, onUndo, isWorkoutActive }) => (
   <div className="flex flex-col gap-2 p-4">
     <div className="flex items-center justify-between">
-      <button onClick={onUndo} className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-gray-400">
+      <button onClick={onUndo} className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700">
         <Undo2 size={24} />
       </button>
       <div className="flex-1 ml-4">
-        <h1 className="text-xl font-semibold text-white">Strong 5×5 – Workout B</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Strong 5×5 – Workout B</h1>
       </div>
       <button
         onClick={onFinish}
         className={cn(
           'px-6 py-3 font-semibold rounded-full transition-colors duration-200',
-          isWorkoutActive ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-700 text-gray-400 cursor-not-allowed',
+          isWorkoutActive ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-300 text-gray-500 cursor-not-allowed',
         )}
         disabled={!isWorkoutActive}
       >
@@ -258,16 +258,16 @@ type ExerciseCardProps = {
 const ExerciseCard = React.forwardRef<HTMLDivElement, ExerciseCardProps>(
   ({ exercise, focusedInput, onCellClick, unit }, ref) => {
     return (
-      <div className="bg-[#0E1113] p-4 rounded-[24px] shadow-lg shadow-black/20">
+      <div className="bg-white p-4 rounded-[24px] shadow-lg">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">{exercise.name}</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{exercise.name}</h2>
           <div className="flex items-center space-x-2 text-gray-500">
             <Link2 size={20} />
             <MoreVertical size={20} />
           </div>
         </div>
         <div className="w-full overflow-hidden rounded-2xl">
-          <div className="grid grid-cols-[1fr_1.5fr_2fr_2fr_1fr] text-sm text-gray-400 font-semibold px-2 py-3 border-b border-gray-700">
+          <div className="grid grid-cols-[1fr_1.5fr_2fr_2fr_1fr] text-sm text-gray-700 font-semibold px-2 py-3 border-b border-gray-200">
             <div>Set</div>
             <div>Previous</div>
             <div>Weight ({unit})</div>
@@ -289,25 +289,25 @@ const ExerciseCard = React.forwardRef<HTMLDivElement, ExerciseCardProps>(
               <div
                 key={set.id}
                 className={cn(
-                  'grid grid-cols-[1fr_1.5fr_2fr_2fr_1fr] items-center text-white text-base py-3 px-2 transition-colors duration-200',
-                  set.completed ? 'bg-green-900/20' : 'hover:bg-gray-800',
+                  'grid grid-cols-[1fr_1.5fr_2fr_2fr_1fr] items-center text-gray-900 text-base py-3 px-2 transition-colors duration-200',
+                  set.completed ? 'bg-green-50' : 'hover:bg-gray-50',
                 )}
               >
                 <div className="flex justify-center items-center">
                   <span
                     className={cn(
                       'w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm',
-                      set.completed ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-300',
+                      set.completed ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700',
                     )}
                   >
                     {set.setIndex}
                   </span>
                 </div>
-                <div className="text-gray-400 text-sm">{set.prev}</div>
+                <div className="text-gray-600 text-sm">{set.prev}</div>
                 <div
                   className={cn(
-                    'flex items-center justify-center p-2 rounded-lg transition-all duration-200 cursor-pointer',
-                    isWeightFocused && 'ring-2 ring-blue-500 bg-gray-800',
+                    'flex items-center justify-center p-2 rounded-lg border border-gray-300 transition-all duration-200 cursor-pointer',
+                    isWeightFocused && 'ring-2 ring-blue-500 bg-blue-50',
                   )}
                   onClick={() => onCellClick(set.id, 'weight')}
                   ref={isWeightFocused ? (ref as React.RefObject<HTMLDivElement>) : null}
@@ -316,8 +316,8 @@ const ExerciseCard = React.forwardRef<HTMLDivElement, ExerciseCardProps>(
                 </div>
                 <div
                   className={cn(
-                    'flex items-center justify-center p-2 rounded-lg transition-all duration-200 cursor-pointer',
-                    isRepsFocused && 'ring-2 ring-blue-500 bg-gray-800',
+                    'flex items-center justify-center p-2 rounded-lg border border-gray-300 transition-all duration-200 cursor-pointer',
+                    isRepsFocused && 'ring-2 ring-blue-500 bg-blue-50',
                   )}
                   onClick={() => onCellClick(set.id, 'reps')}
                   ref={isRepsFocused ? (ref as React.RefObject<HTMLDivElement>) : null}
@@ -328,7 +328,7 @@ const ExerciseCard = React.forwardRef<HTMLDivElement, ExerciseCardProps>(
                   <Check
                     className={cn(
                       'w-6 h-6 transition-colors duration-200',
-                      set.completed ? 'text-green-500' : 'text-gray-700',
+                      set.completed ? 'text-green-600' : 'text-gray-300',
                     )}
                   />
                 </div>
@@ -336,7 +336,7 @@ const ExerciseCard = React.forwardRef<HTMLDivElement, ExerciseCardProps>(
             );
           })}
         </div>
-        <button className="mt-4 w-full h-12 text-blue-500 border border-blue-500 hover:bg-blue-500 hover:text-white rounded-xl">
+        <button className="mt-4 w-full h-12 text-blue-600 border border-blue-500 hover:bg-blue-500 hover:text-white rounded-xl">
           + Add Set
         </button>
       </div>
@@ -368,18 +368,18 @@ const NumericKeypad: React.FC<NumericKeypadProps> = ({
   return (
     <div
       className={cn(
-        'fixed inset-x-0 bottom-0 z-50 bg-[#0E1113] p-4 rounded-t-3xl shadow-2xl transition-transform duration-300 ease-in-out transform',
+        'fixed inset-x-0 bottom-0 z-50 bg-white p-4 rounded-t-3xl shadow-2xl transition-transform duration-300 ease-in-out transform',
         isVisible ? 'translate-y-0' : 'translate-y-full',
       )}
     >
       <div className="flex justify-between items-center mb-4">
         <button
           onClick={onUnitToggle}
-          className="text-gray-400 text-sm font-semibold rounded-full bg-slate-800 hover:bg-slate-700 px-3"
+          className="text-gray-700 text-sm font-semibold rounded-full bg-gray-200 hover:bg-gray-300 px-3"
         >
-          <span className={cn(unit === 'kg' && 'text-white')}>{unit === 'kg' ? 'kg' : 'lb'}</span>
+          <span className={cn(unit === 'kg' && 'text-gray-900')}>{unit === 'kg' ? 'kg' : 'lb'}</span>
         </button>
-        <button onClick={onDone} className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-gray-400">
+        <button onClick={onDone} className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700">
           <ChevronDown size={28} />
         </button>
       </div>
@@ -389,20 +389,20 @@ const NumericKeypad: React.FC<NumericKeypadProps> = ({
           <button
             key={key}
             onClick={() => onKeyClick(key)}
-            className="h-16 text-2xl font-semibold bg-slate-800 hover:bg-slate-700 text-white rounded-2xl shadow-sm"
+            className="h-16 text-2xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-2xl shadow-sm"
           >
             {key}
           </button>
         ))}
         <button
           onClick={() => onKeyClick('.')}
-          className="h-16 text-2xl font-semibold bg-slate-800 hover:bg-slate-700 text-white rounded-2xl shadow-sm"
+          className="h-16 text-2xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-2xl shadow-sm"
         >
           .
         </button>
         <button
           onClick={() => onKeyClick('0')}
-          className="h-16 text-2xl font-semibold bg-slate-800 hover:bg-slate-700 text-white rounded-2xl shadow-sm"
+          className="h-16 text-2xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-2xl shadow-sm"
         >
           0
         </button>
@@ -416,7 +416,7 @@ const NumericKeypad: React.FC<NumericKeypadProps> = ({
 
       <button
         onClick={onClear}
-        className="w-full h-16 mt-2 text-2xl font-semibold bg-slate-800 hover:bg-slate-700 text-gray-400 rounded-2xl shadow-sm"
+        className="w-full h-16 mt-2 text-2xl font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl shadow-sm"
       >
         <Eraser size={28} />
       </button>
@@ -425,4 +425,3 @@ const NumericKeypad: React.FC<NumericKeypadProps> = ({
 };
 
 export default App;
-
