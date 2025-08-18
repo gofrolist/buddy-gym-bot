@@ -52,22 +52,3 @@ ignore = ["E501"]
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
-
-[tool.pyright]
-pythonVersion = "3.13"
-venvPath = "."
-venv = ".venv"
-include = ["src"]
-exclude = [
-  ".venv",
-  "**/__pycache__",
-  ".git",
-  "src/buddy_gym_bot/migrations",
-  "**/site-packages",
-  "**/dist",
-  "**/build"
-]
-typeCheckingMode = "basic"
-reportMissingImports = true
-reportOptionalMemberAccess = "warning"
-reportUnknownMemberType = "warning"

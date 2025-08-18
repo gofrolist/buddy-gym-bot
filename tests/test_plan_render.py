@@ -25,4 +25,4 @@ def test_render_plan_message():
 
     result = service.render_plan_message(plan)
     assert "Mon 18:00 — Strength" in result
-    assert "Bench Press: 5, 5, 5" in result
+    assert "Bench Press: 3x5" in result  # Updated to match new format: count x reps

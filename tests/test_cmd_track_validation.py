@@ -43,11 +43,11 @@ async def test_cmd_track_negative_reps() -> None:
 async def test_cmd_track_zero_weight() -> None:
     msg = DummyMessage("/track bench 0x5")
     await cmd_track(msg)
-    assert msg.replies == ["Weight and reps must be greater than zero."]
+    assert msg.replies == ["Weight must be greater than zero"]
 
 
 @pytest.mark.asyncio
 async def test_cmd_track_zero_reps() -> None:
     msg = DummyMessage("/track bench 100x0")
     await cmd_track(msg)
-    assert msg.replies == ["Weight and reps must be greater than zero."]
+    assert msg.replies == ["Reps must be greater than zero"]

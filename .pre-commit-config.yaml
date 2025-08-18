@@ -10,6 +10,7 @@ repos:
     rev: v1.1.403
     hooks:
     - id: pyright
+      args: [--project, .pyrightconfig.json, src/buddy_gym_bot]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

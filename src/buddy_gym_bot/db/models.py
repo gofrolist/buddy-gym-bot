@@ -8,7 +8,19 @@ import enum
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    text,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -19,37 +31,46 @@ class Base(DeclarativeBase):
 
 
 class User(Base):
-    """User of the BuddyGym bot."""
+    """User model representing a Telegram user."""
 
     __tablename__ = "users"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    tg_id: Mapped[int] = mapped_column("tg_user_id", BigInteger, unique=True, index=True)
-    handle: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    tz: Mapped[str] = mapped_column(String(32), default="UTC")
-    units: Mapped[str] = mapped_column(String(8), default="kg")
-    last_lang: Mapped[str] = mapped_column(String(8), default="en")
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )  # Explicitly specify autoincrement
+    tg_user_id: Mapped[int] = mapped_column(
+        unique=True, index=True
+    )  # Changed from tg_id to tg_user_id
+    handle: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )  # Changed from String(32) to String(64)
+    tz: Mapped[str] = mapped_column(
+        String(32), default="UTC"
+    )  # Changed from nullable=True to default="UTC"
+    units: Mapped[str] = mapped_column(String(8), default="kg")  # Added back the units field
+    last_lang: Mapped[str] = mapped_column(
+        String(8), default="en"
+    )  # Changed from String(5) to String(8)
     premium_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 
-    # CHANGE: Added a cascade rule to ensure sessions are deleted with the user.
-    sessions: Mapped[list[WorkoutSession]] = relationship(
-        "WorkoutSession", back_populates="user", cascade="all, delete-orphan"
+    sessions: Mapped[list[WorkoutSession]] = relationship("WorkoutSession", back_populates="user")
+    referrals: Mapped[list[Referral]] = relationship(
+        "Referral", foreign_keys="Referral.inviter_user_id"
     )
 
     def add_premium_days(self, days: int) -> None:
-        """Extend premium_until by a given number of days."""
-        now = datetime.now(UTC)
-        start = self.premium_until if self.premium_until and self.premium_until > now else now
+        """Add premium days to the user."""
+        start = self.premium_until or datetime.now(UTC)
         self.premium_until = start + timedelta(days=days)
 
     def __repr__(self) -> str:
-        return f"<User id={self.id} tg_id={self.tg_id} handle={self.handle}>"
+        return f"<User id={self.id} tg_user_id={self.tg_user_id} handle={self.handle}>"
 
 
-# CHANGE: Converted the ReferralStatus class to a Python Enum for better type safety.
-class ReferralStatus(enum.Enum):
+# CHANGE: Converted to str-enum for better JSON/serialization and clearer typing
+class ReferralStatus(str, enum.Enum):
     """Referral status constants."""
 
     PENDING = "PENDING"
@@ -60,16 +81,28 @@ class Referral(Base):
     """Referral relationship between users."""
 
     __tablename__ = "referrals"
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )  # Explicitly specify autoincrement
     inviter_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     invitee_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True, index=True
     )
     token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     reward_days: Mapped[int] = mapped_column(Integer, default=30)
-    # CHANGE: Using the Enum for the status column.
+    # CHANGE: Using SQLAlchemy Enum with native_enum=False for SQLite compatibility
     status: Mapped[ReferralStatus] = mapped_column(
-        String(16), default=ReferralStatus.PENDING, index=True
+        SAEnum(
+            ReferralStatus,
+            name="referral_status",  # stable name for Alembic
+            native_enum=False,  # critical for SQLite
+            create_constraint=True,  # adds CHECK(...) on SQLite
+            validate_strings=True,
+        ),
+        default=ReferralStatus.PENDING,
+        server_default=text("'PENDING'"),
+        nullable=False,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
@@ -77,14 +110,19 @@ class Referral(Base):
     fulfilled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
-        return f"<Referral id={self.id} inviter={self.inviter_user_id} invitee={self.invitee_user_id} status={self.status}>"
+        return (
+            f"<Referral id={self.id} inviter={self.inviter_user_id} "
+            f"invitee={self.inviter_user_id} status={self.status.value}>"
+        )
 
 
 class WorkoutSession(Base):
     """A workout session belonging to a user."""
 
     __tablename__ = "workout_sessions"
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )  # Explicitly specify autoincrement
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
@@ -105,7 +143,9 @@ class SetRow(Base):
     """A single set performed in a workout session."""
 
     __tablename__ = "set_rows"
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )  # Explicitly specify autoincrement
     session_id: Mapped[int] = mapped_column(ForeignKey("workout_sessions.id"), index=True)
     exercise: Mapped[str] = mapped_column(String(120))
     weight_kg: Mapped[float] = mapped_column(Float)

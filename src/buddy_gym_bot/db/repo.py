@@ -105,21 +105,35 @@ async def init_db() -> None:
     )
     _session = async_sessionmaker(_engine, expire_on_commit=False)
     async with _engine.begin() as conn:
-        # discover migrations
-        have_migrations = False
+        # For in-memory SQLite, skip migrations (faster, portable) and create tables from models
+        should_use_create_all = False
         try:
-            pkg_migrations = resources.files("buddy_gym_bot").joinpath("migrations")
-            have_migrations = pkg_migrations.is_dir()
+            url_obj = make_url(db_url)
+            if url_obj.drivername.startswith("sqlite") and (
+                url_obj.database in {":memory:", "", None} or ":memory:" in db_url
+            ):
+                should_use_create_all = True
         except Exception:
             pass
-        if not have_migrations:
-            fs_dir = Path(__file__).resolve().parents[2] / "migrations"
-            have_migrations = fs_dir.is_dir()
 
-        if have_migrations:
-            await _run_migrations(conn)
-        else:
+        if should_use_create_all:
             await conn.run_sync(Base.metadata.create_all)
+        else:
+            # discover migrations
+            have_migrations = False
+            try:
+                pkg_migrations = resources.files("buddy_gym_bot").joinpath("migrations")
+                have_migrations = pkg_migrations.is_dir()
+            except Exception:
+                pass
+            if not have_migrations:
+                fs_dir = Path(__file__).resolve().parents[2] / "migrations"
+                have_migrations = fs_dir.is_dir()
+
+            if have_migrations:
+                await _run_migrations(conn)
+            else:
+                await conn.run_sync(Base.metadata.create_all)
 
 
 def get_session() -> async_sessionmaker[AsyncSession]:
@@ -141,18 +155,19 @@ async def close_db() -> None:
     _session = None
 
 
-async def upsert_user(tg_id: int, handle: str | None, lang: str | None) -> User:
+async def upsert_user(tg_user_id: int, handle: str | None, lang: str | None) -> User:
     """
-    Insert or update a user by Telegram ID. Updates handle/lang if changed.
+    Upsert a user by Telegram ID.
     """
     sessmaker = get_session()
     async with sessmaker() as s:
-        res = await s.execute(select(User).where(User.tg_id == tg_id))
+        res = await s.execute(select(User).where(User.tg_user_id == tg_user_id))
         user = res.scalar_one_or_none()
         if user is None:
-            user = User(tg_id=tg_id, handle=handle, last_lang=(lang or "en")[:2])
+            user = User(tg_user_id=tg_user_id, handle=handle, last_lang=(lang or "en")[:2])
             s.add(user)
             await s.commit()
+            # No need to refresh after commit - the user object is already populated
         else:
             changed = False
             if handle and user.handle != handle:
@@ -166,13 +181,13 @@ async def upsert_user(tg_id: int, handle: str | None, lang: str | None) -> User:
         return user
 
 
-async def get_user_by_tg(tg_id: int) -> User | None:
+async def get_user_by_tg(tg_user_id: int) -> User | None:
     """
-    Get a user by their Telegram ID.
+    Get a user by Telegram ID.
     """
     sessmaker = get_session()
     async with sessmaker() as s:
-        res = await s.execute(select(User).where(User.tg_id == tg_id))
+        res = await s.execute(select(User).where(User.tg_user_id == tg_user_id))
         return res.scalar_one_or_none()
 
 
@@ -232,10 +247,10 @@ async def record_referral_click(invitee_tg_id: int, token: str) -> None:
         if not ref:
             return
         # create invitee if not exists
-        res2 = await s.execute(select(User).where(User.tg_id == invitee_tg_id))
+        res2 = await s.execute(select(User).where(User.tg_user_id == invitee_tg_id))
         invitee = res2.scalar_one_or_none()
         if invitee is None:
-            invitee = User(tg_id=invitee_tg_id, last_lang="en")
+            invitee = User(tg_user_id=invitee_tg_id, last_lang="en")
             s.add(invitee)
             await s.flush()
         ref.invitee_user_id = invitee.id
@@ -263,7 +278,7 @@ async def fulfil_referral_for_invitee(invitee_tg_id: int) -> bool:
     """
     sessmaker = get_session()
     async with sessmaker() as s:
-        res_inv = await s.execute(select(User).where(User.tg_id == invitee_tg_id))
+        res_inv = await s.execute(select(User).where(User.tg_user_id == invitee_tg_id))
         invitee = res_inv.scalar_one_or_none()
         if not invitee:
             return False

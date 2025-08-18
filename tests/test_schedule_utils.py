@@ -3,7 +3,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from src.buddy_gym_bot.services.reminder_service import ReminderService
+from buddy_gym_bot.services.reminder_service import ReminderService
 
 
 def test_next_datetime_for():
@@ -15,7 +15,7 @@ def test_next_datetime_for():
 
     # Ensure result is not None before accessing attributes
     assert result is not None
-    assert result.weekday == 0  # Monday
+    assert result.weekday() == 0  # Monday - call the method
     assert result.hour == 19
     assert result.minute == 0
 

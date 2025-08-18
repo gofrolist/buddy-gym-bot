@@ -37,7 +37,9 @@ async def share_png(
     sessmaker = get_session()
     try:
         async with sessmaker() as s:
-            resu = await s.execute(select(User).where(User.tg_id == uid))
+            resu = await s.execute(
+                select(User).where(User.tg_user_id == uid)
+            )  # Changed from User.tg_id
             user = resu.scalar_one_or_none()
             if not user:
                 raise HTTPException(status_code=404, detail="No such user")
@@ -90,7 +92,7 @@ async def share_png(
     draw.text((30, 30), f"BuddyGym — {title}", font=font_big, fill=(240, 240, 240))
     draw.text(
         (30, 80),
-        f"User: @{user.handle or user.tg_id}    Date: {date_str}",
+        f"User: @{user.handle or user.tg_user_id}    Date: {date_str}",
         font=font_small,
         fill=(200, 200, 200),
     )
