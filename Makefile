@@ -1,11 +1,13 @@
-SHELL := /usr/bin/env bash
+SHELL := /usr/bin/env/bash
 export PYTHONUNBUFFERED=1
 
 .PHONY: help
 help:
 	@echo "Targets:"
 	@echo "  sync           - Install project deps with uv"
+	@echo "  webapp-build   - Build webapp and copy to static directory"
 	@echo "  run            - Start bot locally (polling)"
+	@echo "  server         - Start FastAPI server with webapp"
 	@echo "  test           - Run tests"
 	@echo "  precommit      - Run pre-commit on all files"
 	@echo "  build          - Build Docker image"
@@ -16,9 +18,19 @@ help:
 sync:
 	uv sync --all-extras
 
+.PHONY: webapp-build
+webapp-build:
+	cd webapp && npm run build
+	mkdir -p static/webapp
+	cp -r webapp/dist/* static/webapp/
+
 .PHONY: run
 run:
 	uv run python -m buddy_gym_bot.main
+
+.PHONY: server
+server:
+	uv run uvicorn buddy_gym_bot.server.main:app --host 0.0.0.0 --port 8000 --reload
 
 .PHONY: test
 test:
