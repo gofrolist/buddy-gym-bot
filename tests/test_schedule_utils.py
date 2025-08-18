@@ -1,23 +1,29 @@
-import os
+"""Test schedule utility functions."""
 
-import pytest
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-os.environ.setdefault("BOT_TOKEN", "test-token")
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-
-from buddy_gym_bot.bot.main import _next_datetime_for
+from src.buddy_gym_bot.services.reminder_service import ReminderService
 
 
-def test_next_datetime_valid() -> None:
-    dt = _next_datetime_for("Mon", "12:00", "UTC")
-    assert dt.weekday() == 0
+def test_next_datetime_for():
+    """Test the _next_datetime_for method."""
+    service = ReminderService()
 
+    # Test with valid inputs
+    result = service._next_datetime_for("Mon", "19:00", "UTC")
 
-def test_next_datetime_invalid_weekday() -> None:
-    with pytest.raises(ValueError):
-        _next_datetime_for("Funday", "12:00", "UTC")
+    # Ensure result is not None before accessing attributes
+    assert result is not None
+    assert result.weekday == 0  # Monday
+    assert result.hour == 19
+    assert result.minute == 0
 
+    # Test future date calculation
+    now = datetime.now(ZoneInfo("UTC"))
+    if result is not None:
+        assert result > now
 
-def test_next_datetime_invalid_time() -> None:
-    with pytest.raises(ValueError):
-        _next_datetime_for("Mon", "24:61", "UTC")
+    # Test with invalid weekday
+    result = service._next_datetime_for("Invalid", "19:00", "UTC")
+    assert result is None

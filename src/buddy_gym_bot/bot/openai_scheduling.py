@@ -12,6 +12,8 @@ from ..config import SETTINGS
 SYSTEM_PROMPT = (
     "You are BuddyGym's coach. Produce ONLY JSON that validates against the provided schema. "
     "Respect the user's constraints (equipment/time/experience/days). "
+    "When modifying an existing plan, preserve the current structure including days_per_week, "
+    "exercise selection, and overall program design. Only change what is specifically requested. "
     "Prefer canonical exercise names from ExerciseDB when possible."
 )
 

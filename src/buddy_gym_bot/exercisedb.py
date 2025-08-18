@@ -1,100 +1,80 @@
-from __future__ import annotations
+"""
+ExerciseDB client for enriching workout plans with exercise data.
+"""
 
 import logging
 from typing import Any
 
 import httpx
 
-from .config import SETTINGS
-
 
 class ExerciseDBClient:
-    """
-    Client for querying the ExerciseDB API, supporting both RapidAPI and direct endpoints.
-    """
+    """Client for interacting with the ExerciseDB API."""
 
-    def __init__(self) -> None:
-        self.base = SETTINGS.EXERCISEDB_BASE_URL
-        self.rapid_key = SETTINGS.EXERCISEDB_RAPIDAPI_KEY
-        self.rapid_host = SETTINGS.EXERCISEDB_RAPIDAPI_HOST
+    def __init__(self):
+        # Updated base URL to use www subdomain to avoid redirects
+        self.base_url = "https://www.exercisedb.dev/api/v1"
+        self.client = httpx.AsyncClient(
+            timeout=30.0,
+            follow_redirects=True,  # Enable redirect following
+        )
 
-    def _headers(self) -> dict:
-        if self.rapid_key:
-            return {"X-RapidAPI-Key": self.rapid_key, "X-RapidAPI-Host": self.rapid_host}
-        return {"Accept": "application/json"}
+    def _headers(self) -> dict[str, str]:
+        """Get headers for API requests."""
+        return {"Accept": "application/json", "User-Agent": "GymBuddyBot/1.0"}
 
-    def _base_url(self) -> str:
-        if self.rapid_key:
-            return f"https://{self.rapid_host}"
-        return self.base
-
-    async def search(self, q: str, limit: int = 10) -> list[dict[str, Any]]:
-        """
-        Search for exercises by name or keyword.
-        """
-        if not SETTINGS.FF_EXERCISEDB:
-            raise RuntimeError("ExerciseDB disabled")
-        q = q.strip()
-        out: list[dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=10.0, headers=self._headers()) as client:
-            # Try generic search
-            try:
-                url = f"{self._base_url()}/exercises?limit={limit}&search={q}"
-                r = await client.get(url)
-                if r.status_code == 200:
-                    out.extend(r.json())
-            except Exception as e:
-                logging.warning("ExerciseDB generic search failed: %s", e)
-            # Try exact-ish name endpoint
-            try:
-                url2 = f"{self._base_url()}/exercises/name/{q}"
-                r2 = await client.get(url2)
-                if r2.status_code == 200:
-                    out.extend(r2.json())
-            except Exception as e:
-                logging.warning("ExerciseDB name search failed: %s", e)
-        # Normalize & dedupe
-        seen = set()
-        normd: list[dict[str, Any]] = []
-        for e in out:
-            try:
-                item = {
-                    "id": str(e.get("id") or e.get("_id") or e.get("uuid") or e.get("name")),
-                    "name": e.get("name"),
-                    "target": e.get("target") or e.get("targetMuscle"),
-                    "bodyPart": e.get("bodyPart"),
-                    "equipment": e.get("equipment"),
-                    "gifUrl": e.get("gifUrl") or e.get("gifURL"),
-                }
-                key = (item["id"], item["name"])
-                if key in seen:
-                    continue
-                seen.add(key)
-                normd.append(item)
-            except Exception as e:
-                logging.warning("ExerciseDB normalization failed: %s", e)
-                continue
-        return normd[:limit]
-
-    async def map_plan_exercises(self, plan: dict) -> dict:
-        """
-        Attach ExerciseDB matches to exercises in a workout plan by name.
-        """
-        if not SETTINGS.FF_EXERCISEDB:
-            return plan
+    async def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Search for exercises by name."""
         try:
-            for day in plan.get("days", []):
-                for ex in day.get("exercises", []):
-                    name = ex.get("name")
-                    if not name:
-                        continue
-                    try:
-                        matches = await self.search(name, limit=1)
-                        if matches:
-                            ex["exercisedb"] = matches[0]
-                    except Exception as e:
-                        logging.warning("ExerciseDB match for '%s' failed: %s", name, e)
-            return plan
+            url = f"{self.base_url}/exercises"
+            params = {"name": query, "limit": limit}
+
+            response = await self.client.get(url, params=params, headers=self._headers())
+            response.raise_for_status()
+
+            data = response.json()
+            return data.get("data", [])
+
+        except httpx.HTTPStatusError as e:
+            logging.error("Exercise search failed: %s", e)
+            return []
         except Exception as e:
-            logging.warning("ExerciseDB mapping failed: %s", e)
+            logging.exception("Unexpected error during exercise search: %s", e)
+            return []
+
+    async def map_plan_exercises(self, plan: dict[str, Any]) -> dict[str, Any]:
+        """Map exercise names in a workout plan to ExerciseDB data."""
+        if "exercises" not in plan:
             return plan
+
+        mapped_exercises: list[dict[str, Any]] = []
+        for exercise in plan["exercises"]:
+            if isinstance(exercise, dict) and "name" in exercise:
+                exercise_name = exercise["name"]
+                # Search for the exercise
+                search_results = await self.search(exercise_name, limit=1)
+
+                if search_results:
+                    # Use the first result
+                    db_exercise = search_results[0]
+                    mapped_exercise = {
+                        **exercise,
+                        "exercise_db_id": db_exercise.get("id"),
+                        "exercise_db_name": db_exercise.get("name"),
+                        "exercise_db_category": db_exercise.get("category"),
+                        "exercise_db_equipment": db_exercise.get("equipment"),
+                        "exercise_db_instructions": db_exercise.get("instructions"),
+                    }
+                else:
+                    # Keep original exercise data if not found
+                    mapped_exercise = exercise
+
+                mapped_exercises.append(mapped_exercise)
+            else:
+                mapped_exercises.append(exercise)
+
+        return {**plan, "exercises": mapped_exercises}
+
+    async def close(self):
+        """Close the HTTP client."""
+        await self.client.aclose()

@@ -293,6 +293,45 @@ async def fulfil_referral_for_invitee(invitee_tg_id: int) -> bool:
         return True
 
 
+async def start_session_and_append_set(
+    user_id: int,
+    exercise: str,
+    weight_kg: float,
+    reps: int,
+    rpe: float | None,
+    is_warmup: bool = False,
+    title: str | None = None,
+) -> tuple[WorkoutSession, SetRow]:
+    """
+    Start a new workout session and append a set in a single transaction.
+    This is more efficient than separate operations.
+    """
+    sessmaker = get_session()
+    async with sessmaker() as s:
+        # Create session
+        ws = WorkoutSession(user_id=user_id, title=title or "Quick Log")
+        s.add(ws)
+        await s.flush()  # Get the ID without committing
+
+        # Create set row
+        row = SetRow(
+            session_id=ws.id,
+            exercise=exercise,
+            weight_kg=weight_kg,
+            reps=reps,
+            rpe=rpe,
+            is_warmup=is_warmup,
+        )
+        s.add(row)
+
+        # Single commit for both operations
+        await s.commit()
+        await s.refresh(ws)
+        await s.refresh(row)
+
+        return ws, row
+
+
 async def start_session(user_id: int, title: str | None = None) -> WorkoutSession:
     """
     Start a new workout session for a user.

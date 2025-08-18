@@ -19,6 +19,7 @@ dependencies = [
   "pydantic-settings",
   "httpx",
   "sqlalchemy",
+  "greenlet",
   "Pillow",
   "aiosqlite",
   "Babel",

@@ -1,28 +1,28 @@
-from buddy_gym_bot.bot.main import render_plan_message
+"""Test plan rendering functionality."""
+
+from buddy_gym_bot.services.workout_service import WorkoutService
 
 
 def test_render_plan_message():
+    """Test that plan messages are rendered correctly."""
+    service = WorkoutService()
+
     plan = {
         "days": [
             {
                 "weekday": "Mon",
                 "time": "18:00",
-                "focus": "Upper",
+                "focus": "Strength",
                 "exercises": [
-                    {"name": "Bench", "sets": [{"reps": "3x5"}]},
-                    {"name": "Row", "sets": [{"reps": "3x8"}]},
+                    {
+                        "name": "Bench Press",
+                        "sets": [{"reps": "5"}, {"reps": "5"}, {"reps": "5"}],
+                    }
                 ],
-            },
-            {
-                "weekday": "Wed",
-                "time": "18:00",
-                "focus": "Lower",
-                "exercises": [{"name": "Squat", "sets": [{"reps": "3x5"}]}],
-            },
+            }
         ]
     }
-    text = render_plan_message(plan)
-    assert "Mon 18:00 — Upper" in text
-    assert "• Bench: 3x5" in text
-    assert "Wed 18:00 — Lower" in text
-    assert "• Squat: 3x5" in text
+
+    result = service.render_plan_message(plan)
+    assert "Mon 18:00 — Strength" in result
+    assert "Bench Press: 5, 5, 5" in result

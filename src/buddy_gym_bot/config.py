@@ -3,6 +3,15 @@ import os
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
+# Try to load .env file manually as fallback
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    # dotenv not installed, continue without it
+    pass
+
 
 def _bool(name: str, default: bool) -> bool:
     """
@@ -38,6 +47,12 @@ class Config(BaseSettings):
     Application configuration loaded from environment variables.
     Uses pydantic for validation and parsing.
     """
+
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",  # Ignore extra fields from .env
+    }
 
     BOT_TOKEN: str = Field(..., description="Telegram bot token")
     ADMIN_CHAT_ID: int | None = Field(None, description="Admin chat ID")

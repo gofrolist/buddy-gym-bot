@@ -1,8 +1,13 @@
 {
-  "title": "Quick Track",
+  "title": "BuddyGym",
   "exercise": "Exercise",
   "weight": "Weight (kg)",
   "reps": "Reps",
-  "add_set": "Add set",
-  "saved": "Set saved to BuddyGym."
+  "add_set": "Add Set",
+  "saved": "Workout set saved successfully!",
+  "saving": "Saving...",
+  "exercise_required": "Exercise name is required",
+  "weight_invalid": "Weight must be a positive number",
+  "reps_invalid": "Reps must be a positive number",
+  "save_failed": "Failed to save workout set. Please try again."
 }

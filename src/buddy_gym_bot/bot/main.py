@@ -1,31 +1,38 @@
+"""
+Main bot module with command handlers and bot initialization.
+Refactored to use service layer and improve code organization.
+"""
+
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
-from functools import partial
-from zoneinfo import ZoneInfo
 
 from aiogram import Bot, Dispatcher, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
-from apscheduler.schedulers.asyncio import AsyncIOScheduler  # pyright: ignore[reportMissingImports]
-from apscheduler.triggers.date import DateTrigger  # pyright: ignore[reportMissingImports]
 
 from ..config import SETTINGS
-from ..db import repo
-from ..exercisedb import ExerciseDBClient
 from ..logging_setup import setup_logging
+from ..services import OpenAIService, ReminderService, WorkoutService
+from .command_utils import (
+    ensure_user_exists,
+    extract_command_args,
+    handle_referral_click,
+    handle_referral_fulfillment,
+    validate_positive_number,
+)
 from .commands_labels import apply_localized_commands
-from .openai_scheduling import generate_schedule
 from .parsers import TRACK_RE
 from .utils import wave_hello, webapp_button
 
+# Initialize router and services
 router = Router()
-scheduler = AsyncIOScheduler()
-jobs_by_chat: dict[int, list[str]] = {}
+workout_service = WorkoutService()
+openai_service = OpenAIService()
+reminder_service = ReminderService()
 
 
 @router.message(CommandStart(deep_link=True))
@@ -41,261 +48,244 @@ async def cmd_start(message: Message) -> None:
 
 
 async def _handle_start(message: Message) -> None:
-    """Upsert user and handle referral if present."""
-    await repo.upsert_user(
-        message.from_user.id, message.from_user.username, message.from_user.language_code
-    )
-    if SETTINGS.FF_REFERRALS and message.text and " " in message.text:
-        payload = message.text.split(" ", 1)[1].strip()
-        if payload.startswith("ref_"):
-            try:
-                await repo.record_referral_click(message.from_user.id, payload)
-            except Exception:
-                logging.exception("record_referral_click failed")
-    kb = webapp_button(SETTINGS.WEBAPP_URL, "Open BuddyGym")
-    greeting = wave_hello(message.from_user.first_name or "Athlete")
-    await message.answer(
-        f"{greeting} Welcome to BuddyGym! Track your workouts and get reminders.",
-        reply_markup=kb,
-    )
+    """Handle start command and referral processing."""
+    try:
+        # Ensure user exists in database
+        user = await ensure_user_exists(message)
+        if not user:
+            await message.answer("Sorry, I couldn't set up your account. Please try again.")
+            return
+
+        # Handle referral if present
+        await handle_referral_click(message)
+
+        # Send welcome message with webapp button
+        kb = webapp_button(SETTINGS.WEBAPP_URL, "Open BuddyGym")
+        greeting = wave_hello(
+            message.from_user.first_name or "Athlete" if message.from_user else "Athlete"
+        )
+        await message.answer(
+            f"{greeting} Welcome to BuddyGym! Track your workouts and get reminders.",
+            reply_markup=kb,
+        )
+
+    except Exception as e:
+        logging.exception("Start command failed: %s", e)
+        await message.answer(
+            "Welcome to BuddyGym! Something went wrong, but you can still use the bot."
+        )
 
 
 @router.message(Command("track"))
 async def cmd_track(message: Message) -> None:
     """Handle /track command for logging a workout set."""
-    text = message.text or ""
-    args = text.partition(" ")[2].strip()
-    m = TRACK_RE.match(args)
-    if not m:
-        text = (
-            "Usage: /track \\<exercise\\> \\<weight\\>x\\<reps\\> [rpeX]\n"
-            "Example: /track bench 100x5 rpe8"
+    start_time = asyncio.get_event_loop().time()
+
+    try:
+        # Extract and validate command arguments
+        args = extract_command_args(message, "/track")
+        if not args:
+            await _send_track_usage(message)
+            return
+
+        # Parse exercise data using regex
+        match = TRACK_RE.match(args)
+        if not match:
+            await _send_track_usage(message)
+            return
+
+        # Extract and validate data
+        exercise = match.group("ex")
+        weight_str = match.group("w")
+        reps_str = match.group("r")
+        rpe_str = match.group("rpe")
+
+        # Validate weight
+        weight_valid, weight, weight_error = validate_positive_number(weight_str, "Weight")
+        if not weight_valid or weight is None:
+            await message.reply(weight_error)
+            return
+
+        # Validate reps
+        reps_valid, reps, reps_error = validate_positive_number(reps_str, "Reps")
+        if not reps_valid or reps is None:
+            await message.reply(reps_error)
+            return
+
+        # Parse RPE if present
+        rpe = None
+        if rpe_str:
+            try:
+                rpe = float(rpe_str)
+                if not (1 <= rpe <= 10):
+                    await message.reply("RPE must be between 1 and 10.")
+                    return
+            except ValueError:
+                await message.reply("RPE must be a valid number.")
+                return
+
+        # Ensure user exists
+        user = await ensure_user_exists(message)
+        if not user:
+            await message.answer("Sorry, I couldn't access your account. Please try again.")
+            return
+
+        # Log the workout set (this should be fast)
+        result = await workout_service.log_workout_set(
+            user.id, exercise, weight, int(reps), rpe, is_warmup=False
         )
-        await message.reply(text, parse_mode="MarkdownV2")
-        return
-    ex = m.group("ex")
-    w = float(m.group("w"))
-    r = int(m.group("r"))
-    if w <= 0 or r <= 0:
-        await message.reply("Weight and reps must be greater than zero.")
-        return
-    rpe = m.group("rpe")
-    rpe_val = float(rpe) if rpe else None
-    user = await repo.upsert_user(
-        message.from_user.id, message.from_user.username, message.from_user.language_code
-    )
-    sess = await repo.start_session(user.id, title="Quick Log")
-    await repo.append_set(sess.id, ex, w, r, rpe_val, is_warmup=False)
-    if SETTINGS.FF_REFERRALS:
-        try:
-            ok = await repo.fulfil_referral_for_invitee(message.from_user.id)
-            if ok:
-                await message.answer("Referral fulfilled! +30 days Plus for both 🎉")
-        except Exception:
-            logging.exception("fulfil_referral_for_invitee failed")
-    await message.answer(f"Logged: {ex} {w}x{r}" + (f" RPE{rpe_val:g}" if rpe_val else ""))
+
+        if "error" in result:
+            await message.answer(f"Error logging set: {result['error']}")
+            return
+
+        # Send confirmation immediately
+        rpe_text = f" RPE{rpe:g}" if rpe else ""
+        await message.answer(f"Logged: {exercise} {weight}x{reps}{rpe_text}")
+
+        # Handle referral fulfillment asynchronously (non-blocking)
+        _referral_task = asyncio.create_task(handle_referral_fulfillment(user.id, message))  # noqa: RUF006
+
+        # Log performance
+        elapsed = (asyncio.get_event_loop().time() - start_time) * 1000
+        logging.info("Track command completed in %.1fms", elapsed)
+
+    except Exception as e:
+        logging.exception("Track command failed: %s", e)
+        await message.answer("Sorry, I couldn't log your set. Please try again.")
 
 
-def render_plan_message(plan: dict) -> str:
-    """Render a human-readable summary of the workout plan."""
-    lines: list[str] = ["Plan created ✅ I'll remind you before workouts."]
-    for day in plan.get("days", []):
-        weekday = day.get("weekday", "?")
-        time = day.get("time")
-        focus = day.get("focus")
-        header = weekday
-        if time:
-            header += f" {time}"
-        if focus:
-            header += f" — {focus}"
-        lines.append(header)
-        for ex in day.get("exercises", []):
-            name = ex.get("name", "exercise")
-            sets = ", ".join(s.get("reps", "") for s in ex.get("sets", []))
-            lines.append(f"• {name}: {sets}")
-        lines.append("")
-    return "\n".join(lines).strip()
+async def _send_track_usage(message: Message) -> None:
+    """Send track command usage instructions."""
+    usage_text = "Usage: /track (exercise) (weight)x(reps) [rpeX]\nExample: /track bench 100x5 rpe8"
+    await message.reply(usage_text)
 
 
 @router.message(Command("schedule"))
 async def cmd_schedule(message: Message) -> None:
     """Handle /schedule command to generate or modify a workout plan."""
-    req = (message.text or "").partition(" ")[2].strip()
-    user = await repo.upsert_user(
-        message.from_user.id, message.from_user.username, message.from_user.language_code
-    )
-    tz = user.tz or "UTC"
-    stored_plan = None
     try:
-        stored_plan = await repo.get_user_plan(user.id)
-    except Exception:
-        logging.exception("Failed to load stored plan")
-    if not req and stored_plan:
-        plan = stored_plan
-    else:
-        base = stored_plan if stored_plan else None
-        text = req or "3 days/week, 40 minutes, dumbbells only"
-        plan = await generate_schedule(text, tz=tz, base_plan=base if req else None)
+        # Ensure user exists
+        user = await ensure_user_exists(message)
+        if not user:
+            await message.answer("Sorry, I couldn't access your account. Please try again.")
+            return
 
-    # Optionally enrich with ExerciseDB
-    if SETTINGS.FF_EXERCISEDB:
-        try:
-            client = ExerciseDBClient()
-            plan = await client.map_plan_exercises(plan)
-        except Exception:
-            logging.exception("ExerciseDB enrichment failed")
+        # Extract request text
+        request_text = extract_command_args(message, "/schedule")
+        timezone = getattr(user, "tz", None) or "UTC"
 
-    try:
-        await repo.upsert_user_plan(user.id, plan)
-    except Exception:
-        logging.exception("Failed to save user plan")
+        # Create or modify workout plan
+        plan = await workout_service.create_workout_plan(user.id, request_text, timezone)
 
-    # Schedule reminders 60 minutes before each day/time
-    if SETTINGS.FF_REMINDERS:
-        try:
-            bot = message.bot
-            if bot is None:
-                raise RuntimeError("Bot instance is unavailable")
-            await schedule_plan_reminders(bot, message.chat.id, plan)
-        except Exception:
-            logging.exception("Scheduling reminders failed")
-
-    await message.answer(render_plan_message(plan))
-
-
-async def schedule_plan_reminders(bot: Bot, chat_id: int, plan: dict) -> None:
-    """Schedule workout reminders for the user based on their plan."""
-    if not scheduler.running:
-        scheduler.start()
-    # Cancel existing jobs for this chat_id
-    for job_id in jobs_by_chat.pop(chat_id, []):
-        try:
-            scheduler.remove_job(job_id)
-        except Exception:
-            logging.exception("Failed to remove existing job %s", job_id)
-
-    tzname = plan.get("timezone") or "UTC"
-    new_job_ids: list[str] = []
-    for day in plan.get("days", []):
-        wd = day.get("weekday")
-        time_str = day.get("time", "18:00")
-        focus = day.get("focus", "Workout")
-        for week in range(plan.get("weeks", 1)):
+        # Schedule reminders if enabled
+        if SETTINGS.FF_REMINDERS:
             try:
-                dt = _next_datetime_for(wd, time_str, tzname, weeks_ahead=week)
-            except ValueError as e:
-                logging.warning("Skipping reminder due to invalid input: %s", e)
-                continue
-            remind_at = dt - timedelta(minutes=60)
-            if remind_at < datetime.now(tz=remind_at.tzinfo):
-                continue
-            job_id = f"reminder:{chat_id}:{int(remind_at.timestamp())}"
-            scheduler.add_job(
-                partial(bot.send_message, chat_id, f"⏰ {focus} at {time_str}. Ready?"),
-                trigger=DateTrigger(run_date=remind_at),
-                id=job_id,
-                replace_existing=True,
-                misfire_grace_time=60,
-                coalesce=True,
-                max_instances=1,
-                name=job_id,
-            )
-            new_job_ids.append(job_id)
-    if new_job_ids:
-        jobs_by_chat[chat_id] = new_job_ids
+                bot = message.bot
+                if bot is None:
+                    raise RuntimeError("Bot instance is unavailable")
+                await reminder_service.schedule_plan_reminders(bot, message.chat.id, plan)  # type: ignore
+            except Exception as e:
+                logging.exception("Failed to schedule reminders: %s", e)
+                # Don't fail the command if reminders fail
 
+        # Send plan summary
+        plan_message = workout_service.render_plan_message(plan)
+        await message.answer(plan_message)
 
-WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-
-def _next_datetime_for(weekday: str, time_str: str, tzname: str, weeks_ahead: int = 0) -> datetime:
-    """Compute the next datetime for a given weekday and time in the specified timezone."""
-    if weekday not in WEEKDAYS:
-        raise ValueError(f"Invalid weekday: {weekday}")
-    try:
-        hour, minute = map(int, time_str.split(":", 1))
-    except Exception as exc:  # pragma: no cover - defensive
-        raise ValueError(f"Invalid time: {time_str}") from exc
-    if not (0 <= hour < 24 and 0 <= minute < 60):
-        raise ValueError(f"Invalid time: {time_str}")
-    tz = ZoneInfo(tzname) if tzname else ZoneInfo("UTC")
-    now = datetime.now(tz=tz)
-    target_wd = WEEKDAYS.index(weekday)
-    days_ahead = (target_wd - now.weekday() + 7) % 7 + weeks_ahead * 7
-    target_date = (now + timedelta(days=days_ahead)).replace(
-        hour=hour, minute=minute, second=0, microsecond=0
-    )
-    return target_date
+    except Exception as e:
+        logging.exception("Schedule command failed: %s", e)
+        await message.answer("Sorry, I couldn't create your workout plan. Please try again.")
 
 
 @router.message(Command("today"))
 async def cmd_today(message: Message) -> None:
     """Handle /today command."""
-    await message.answer("Today: 3 sets x 5 reps of a compound lift + accessories. Go crush it! 💪")
+    try:
+        # TODO: Implement actual today's workout logic
+        await message.answer(
+            "Today: 3 sets x 5 reps of a compound lift + accessories. Go crush it! 💪"
+        )
+    except Exception as e:
+        logging.exception("Today command failed: %s", e)
+        await message.answer("Sorry, I couldn't get today's workout. Please try again.")
 
 
 @router.message(Command("stats"))
 async def cmd_stats(message: Message) -> None:
     """Handle /stats command."""
-    await message.answer("Stats (stub): 5 workouts this week, 12,300 kg total volume.")
+    try:
+        # TODO: Implement actual stats logic
+        await message.answer("Stats (stub): 5 workouts this week, 12,300 kg total volume.")
+    except Exception as e:
+        logging.exception("Stats command failed: %s", e)
+        await message.answer("Sorry, I couldn't get your stats. Please try again.")
 
 
 @router.message(Command("ask"))
 async def cmd_ask(message: Message) -> None:
     """Handle /ask command to answer user questions using OpenAI if available."""
-    q = (message.text or "").partition(" ")[2].strip()
-    if not q:
-        await message.reply("Ask me something like: /ask How to fix my squat form?")
-        return
     try:
-        # lightweight answer via OpenAI if key exists; otherwise echo
-        import httpx
+        # Extract question
+        question = extract_command_args(message, "/ask")
+        if not question:
+            await message.reply("Ask me something like: /ask How to fix my squat form?")
+            return
 
-        from .openai_scheduling import SETTINGS as _S  # reuse settings
+        # Get AI-powered fitness advice
+        answer = await openai_service.get_fitness_advice(question)
+        await message.answer(answer)
 
-        if _S.OPENAI_API_KEY:
-            headers = {"Authorization": f"Bearer {_S.OPENAI_API_KEY}"}
-            payload = {"model": "gpt-5-mini", "messages": [{"role": "user", "content": q}]}
-            async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
-                try:
-                    r = await client.post(
-                        "https://api.openai.com/v1/chat/completions", json=payload
-                    )
-                    r.raise_for_status()
-                    ans = r.json()["choices"][0]["message"]["content"].strip()
-                except httpx.HTTPError as e:
-                    logging.warning("OpenAI request failed: %s", e)
-                    await message.answer("OpenAI seems busy right now, please try again later.")
-                    return
-            if len(ans) > 500:
-                ans = ans[:500] + "..."
-            await message.answer(ans)
-        else:
-            await message.answer(
-                "(No OpenAI key) My quick take: stay consistent, use good form, progressive overload."
-            )
-    except Exception:
-        logging.exception("ask failed")
-        await message.answer("Sorry, I had an error answering that.")
-        # admin alert happens via logging handler
+    except Exception as e:
+        logging.exception("Ask command failed: %s", e)
+        await message.answer("Sorry, I had an error answering that. Please try again.")
 
 
 async def on_startup(bot: Bot) -> None:
     """Startup routine: set up logging, initialize DB, and apply localized commands."""
-    setup_logging()
-    await repo.init_db()
-    await apply_localized_commands(bot)
+    try:
+        setup_logging()
+        from ..db import repo
+
+        # Delete any existing webhook if running in polling mode
+        if not SETTINGS.USE_WEBHOOK:
+            try:
+                await bot.delete_webhook()
+                logging.info("Deleted existing webhook for polling mode")
+            except Exception as e:
+                logging.warning("Failed to delete webhook: %s", e)
+
+        await repo.init_db()
+        await apply_localized_commands(bot)
+        logging.info("Bot startup completed successfully")
+    except Exception as e:
+        logging.exception("Bot startup failed: %s", e)
+        raise
+
+
+async def on_shutdown(bot: Bot) -> None:
+    """Shutdown routine: clean up resources."""
+    try:
+        reminder_service.shutdown()
+        logging.info("Bot shutdown completed successfully")
+    except Exception as e:
+        logging.exception("Bot shutdown failed: %s", e)
+    finally:
+        # Ensure we don't try to shutdown again
+        pass
 
 
 def create_dispatcher(bot: Bot) -> Dispatcher:
-    """Create dispatcher with all routers and startup handlers."""
+    """Create dispatcher with all routers and startup/shutdown handlers."""
     dp = Dispatcher()
     dp.include_router(router)
     dp.startup.register(on_startup)
+    dp.shutdown.register(on_shutdown)
     return dp
 
 
 async def _run() -> None:
+    """Main bot run function."""
     if SETTINGS.USE_WEBHOOK:
         raise SystemExit("USE_WEBHOOK is enabled; polling is disabled")
     if not SETTINGS.BOT_TOKEN:
@@ -304,11 +294,19 @@ async def _run() -> None:
     bot = Bot(SETTINGS.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = create_dispatcher(bot)
 
-    # Startup tasks (logging, DB init) handled via on_startup
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)  # type: ignore
+    except KeyboardInterrupt:
+        logging.info("Bot stopped by user")
+    except Exception as e:
+        logging.exception("Bot polling failed: %s", e)
+        raise
+    finally:
+        await on_shutdown(bot)
 
 
 def main() -> None:
+    """Main entry point."""
     asyncio.run(_run())
 
 
