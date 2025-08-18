@@ -1,11 +1,10 @@
-[build-system]
-requires = ["uv_build>=0.8.7,<0.9.0"]
-build-backend = "uv_build"
-
 [project]
 name = "buddy-gym-bot"
 version = "0.2.0"
 description = "Telegram buddy gym chatbot"
+authors = [
+  {name = "Evgenii Vasilenko", email = "evgenii.vasilenko@gmail.com"}
+]
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -38,6 +37,10 @@ test = [
   "pytest-asyncio",
 ]
 
+[build-system]
+requires = ["uv_build>=0.8.7,<0.9.0"]
+build-backend = "uv_build"
+
 [tool.ruff]
 line-length = 100
 target-version = "py313"
@@ -52,3 +55,39 @@ ignore = ["E501"]
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
+
+[tool.pyright]
+include = ["src/buddy_gym_bot"]
+exclude = [
+  ".venv",
+  "**/__pycache__",
+  ".git",
+  "src/buddy_gym_bot/migrations",
+  "**/site-packages",
+  "**/dist",
+  "**/build",
+  "tests",
+  "webapp",
+  "infra",
+  "migrations",
+  "*.pyc",
+  "*.pyo",
+  "*.pyd",
+  ".pytest_cache",
+  ".ruff_cache",
+  "node_modules",
+  "*.egg-info",
+  "**/test_*.py",
+  "**/tests/**",
+  "test_*.py"
+]
+pythonVersion = "3.13"
+pythonPath = ".venv/bin/python3"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportOptionalMemberAccess = "warning"
+reportUnknownMemberType = "warning"
+useLibraryCodeForTypes = true
+extraPaths = [".venv/lib/python3.13/site-packages"]
