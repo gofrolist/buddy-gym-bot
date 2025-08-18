@@ -439,6 +439,7 @@ export default function App() {
                 <label className="input-label">Weight</label>
                 <input
                   type="number"
+                  inputMode="numeric"
                   value={currentWeight}
                   onChange={(e) => setCurrentWeight(e.target.value)}
                   className="weight-input__field"
@@ -453,6 +454,7 @@ export default function App() {
                 <label className="input-label">Reps</label>
                 <input
                   type="number"
+                  inputMode="numeric"
                   value={currentReps}
                   onChange={(e) => setCurrentReps(e.target.value)}
                   className="weight-input__field"
@@ -467,6 +469,7 @@ export default function App() {
                 <label className="input-label">RPE</label>
                 <input
                   type="number"
+                  inputMode="numeric"
                   value={currentRPE}
                   onChange={(e) => setCurrentRPE(e.target.value)}
                   className="weight-input__field"

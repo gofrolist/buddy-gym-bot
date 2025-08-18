@@ -15,11 +15,25 @@ body {
   overflow-x: hidden;
 }
 
+/* Mobile safe area support */
+@supports (padding: max(0px)) {
+  body {
+    padding-top: max(0px, env(safe-area-inset-top));
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+  }
+}
+
 /* Workout App Layout */
 .workout-app {
   min-height: 100vh;
   background-color: #000000;
   position: relative;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 
@@ -30,8 +44,12 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 16px;
+  padding-top: max(16px, env(safe-area-inset-top, 16px));
   background-color: #1a1a1a;
   border-bottom: 1px solid #333;
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
 .workout-control {
@@ -441,6 +459,15 @@ body {
   text-align: center;
   padding: 0 12px;
   transition: all 0.2s ease;
+  -webkit-appearance: none;
+  -moz-appearance: textfield;
+}
+
+/* Remove spinner arrows for webkit browsers */
+.weight-input__field::-webkit-outer-spin-button,
+.weight-input__field::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .input-field--active .weight-input__field {
@@ -452,6 +479,19 @@ body {
   outline: none;
   border-color: #ff3b30;
   box-shadow: 0 0 0 2px rgba(255, 59, 48, 0.2);
+}
+
+/* Mobile input optimizations */
+@media (max-width: 768px) {
+  .weight-input__field {
+    font-size: 16px;
+    height: 44px;
+  }
+
+  /* Prevent zoom on input focus on iOS */
+  .weight-input__field {
+    font-size: 16px;
+  }
 }
 
 .weight-input__unit {
