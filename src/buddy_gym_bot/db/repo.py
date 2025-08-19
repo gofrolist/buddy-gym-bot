@@ -403,3 +403,23 @@ async def last_best_set(user_id: int, exercise: str) -> tuple[int, float, int] |
         )
         row = res.first()
         return (row[0], row[1], row[2]) if row else None
+
+
+async def get_user_sessions(user_id: int) -> list[WorkoutSession]:
+    """
+    Get all workout sessions for a user with their sets.
+    """
+    sessmaker = get_session()
+    async with sessmaker() as s:
+        res = await s.execute(
+            select(WorkoutSession)
+            .where(WorkoutSession.user_id == user_id)
+            .order_by(WorkoutSession.started_at.desc())
+        )
+        sessions = list(res.scalars().all())
+
+        # Load sets for each session
+        for session in sessions:
+            await s.refresh(session, attribute_names=["sets"])
+
+        return sessions

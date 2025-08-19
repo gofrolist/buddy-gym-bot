@@ -31,7 +31,7 @@ body {
   background-color: #000000;
   position: relative;
   padding-top: max(20px, env(safe-area-inset-top, 20px));
-  padding-bottom: calc(70px + max(20px, env(safe-area-inset-bottom, 20px)));
+  padding-bottom: max(20px, env(safe-area-inset-bottom, 20px));
   padding-left: max(20px, env(safe-area-inset-left, 20px));
   padding-right: max(20px, env(safe-area-inset-right, 20px));
 }
@@ -49,6 +49,11 @@ body {
   left: 0;
   right: 0;
   z-index: 1000;
+}
+
+/* Add bottom padding when navigation is visible */
+.workout-app:not(.keypad-active) {
+  padding-bottom: calc(70px + max(20px, env(safe-area-inset-bottom, 20px)));
 }
 
 .tab-button {

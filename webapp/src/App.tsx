@@ -110,14 +110,18 @@ export default function App() {
 
   // Fetch current workout plan
   const fetchCurrentPlan = async () => {
+    if (!user?.id) return;
+
     try {
-      const response = await fetch("/api/v1/plan/current", {
+      const response = await fetch(`/api/v1/plan/current?tg_user_id=${user.id}`, {
         headers: { "Content-Type": "application/json" },
       });
 
       if (response.ok) {
-        const plan = await response.json();
-        setCurrentPlan(plan);
+        const data = await response.json();
+        if (data.success && data.plan) {
+          setCurrentPlan(data.plan);
+        }
       }
     } catch (error) {
       console.error("Error fetching current plan:", error);
@@ -126,14 +130,18 @@ export default function App() {
 
   // Fetch workout history
   const fetchWorkoutHistory = async () => {
+    if (!user?.id) return;
+
     try {
-      const response = await fetch("/api/v1/workout/history", {
+      const response = await fetch(`/api/v1/workout/history?tg_user_id=${user.id}`, {
         headers: { "Content-Type": "application/json" },
       });
 
       if (response.ok) {
-        const history = await response.json();
-        setWorkoutHistory(history);
+        const data = await response.json();
+        if (data.success && data.history) {
+          setWorkoutHistory(data.history);
+        }
       }
     } catch (error) {
       console.error("Error fetching workout history:", error);
@@ -676,36 +684,38 @@ export default function App() {
   );
 
     return (
-    <div className="workout-app">
+    <div className={`workout-app ${showKeypad ? 'keypad-active' : ''}`}>
       {/* Tab Content */}
       {activeTab === 'workout' && renderWorkoutTracker()}
       {activeTab === 'plan' && renderCurrentPlan()}
       {activeTab === 'history' && renderHistory()}
 
-      {/* Tab Navigation */}
-      <div className="tab-navigation">
-        <button
-          className={`tab-button ${activeTab === 'workout' ? 'tab-button--active' : ''}`}
-          onClick={() => setActiveTab('workout')}
-        >
-          <span className="tab-icon">🏋️</span>
-          <span className="tab-label">Workout</span>
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'plan' ? 'tab-button--active' : ''}`}
-          onClick={() => setActiveTab('plan')}
-        >
-          <span className="tab-icon">📋</span>
-          <span className="tab-label">Plan</span>
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'history' ? 'tab-button--active' : ''}`}
-          onClick={() => setActiveTab('history')}
-        >
-          <span className="tab-icon">📊</span>
-          <span className="tab-label">History</span>
-        </button>
-      </div>
+            {/* Tab Navigation */}
+      {!showKeypad && (
+        <div className="tab-navigation">
+          <button
+            className={`tab-button ${activeTab === 'workout' ? 'tab-button--active' : ''}`}
+            onClick={() => setActiveTab('workout')}
+          >
+            <span className="tab-icon">🏋️</span>
+            <span className="tab-label">Workout</span>
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'plan' ? 'tab-button--active' : ''}`}
+            onClick={() => setActiveTab('plan')}
+          >
+            <span className="tab-icon">📋</span>
+            <span className="tab-label">Plan</span>
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'history' ? 'tab-button--active' : ''}`}
+            onClick={() => setActiveTab('history')}
+          >
+            <span className="tab-icon">📊</span>
+            <span className="tab-label">History</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
