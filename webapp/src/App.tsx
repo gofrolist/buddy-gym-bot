@@ -693,27 +693,33 @@ export default function App() {
             {/* Tab Navigation */}
       {!showKeypad && (
         <div className="tab-navigation">
-          <button
-            className={`tab-button ${activeTab === 'workout' ? 'tab-button--active' : ''}`}
-            onClick={() => setActiveTab('workout')}
-          >
-            <span className="tab-icon">🏋️</span>
-            <span className="tab-label">Workout</span>
-          </button>
-          <button
-            className={`tab-button ${activeTab === 'plan' ? 'tab-button--active' : ''}`}
-            onClick={() => setActiveTab('plan')}
-          >
-            <span className="tab-icon">📋</span>
-            <span className="tab-label">Plan</span>
-          </button>
-          <button
-            className={`tab-button ${activeTab === 'history' ? 'tab-button--active' : ''}`}
-            onClick={() => setActiveTab('history')}
-          >
-            <span className="tab-icon">📊</span>
-            <span className="tab-label">History</span>
-          </button>
+                          <button
+          className={`tab-button ${activeTab === 'workout' ? 'tab-button--active' : ''}`}
+          onClick={() => {
+            setActiveTab('workout');
+            setShowKeypad(false);
+          }}
+        >
+          Workout
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'plan' ? 'tab-button--active' : ''}`}
+          onClick={() => {
+            setActiveTab('plan');
+            setShowKeypad(false);
+          }}
+        >
+          Plan
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'history' ? 'tab-button--active' : ''}`}
+          onClick={() => {
+            setActiveTab('history');
+            setShowKeypad(false);
+          }}
+        >
+          History
+        </button>
         </div>
       )}
     </div>

@@ -57,7 +57,7 @@ def _prepare_url(url: str) -> tuple[str, dict]:
     return url_obj.render_as_string(hide_password=False), connect_args
 
 
-async def _run_migrations(conn) -> None:
+async def _run_migrations(conn: Any) -> None:
     """Execute .sql migration files sequentially.
 
     Looks for a ``migrations`` directory bundled with the package first,
@@ -83,7 +83,7 @@ async def _run_migrations(conn) -> None:
         for stmt in sql.split(";"):
             stmt = stmt.strip()
             if stmt:
-                await conn.exec_driver_sql(stmt)
+                await conn.run_sync(lambda sync_conn, s=stmt: sync_conn.exec_driver_sql(s))  # type: ignore
 
 
 async def init_db() -> None:

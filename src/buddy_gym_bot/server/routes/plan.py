@@ -22,7 +22,9 @@ class PlanResponse(BaseModel):
 
 
 @router.get("/plan/current")
-async def get_current_plan(tg_user_id: int = Query(..., description="Telegram user ID")) -> PlanResponse:
+async def get_current_plan(
+    tg_user_id: int = Query(..., description="Telegram user ID"),
+) -> PlanResponse:
     """Get the current workout plan for a user."""
     try:
         # Ensure user exists
@@ -32,19 +34,10 @@ async def get_current_plan(tg_user_id: int = Query(..., description="Telegram us
         plan_data = await repo.get_user_plan(user.id)
 
         if plan_data:
-            return PlanResponse(
-                success=True,
-                plan=plan_data
-            )
+            return PlanResponse(success=True, plan=plan_data)
         else:
-            return PlanResponse(
-                success=True,
-                plan=None
-            )
+            return PlanResponse(success=True, plan=None)
 
     except Exception as e:
         logging.exception("Failed to get current plan: %s", e)
-        return PlanResponse(
-            success=False,
-            error=str(e)
-        )
+        return PlanResponse(success=False, error=str(e))
