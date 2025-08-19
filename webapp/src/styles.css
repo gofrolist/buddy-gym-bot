@@ -30,10 +30,65 @@ body {
   min-height: 100vh;
   background-color: #000000;
   position: relative;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
+  padding-top: max(20px, env(safe-area-inset-top, 20px));
+  padding-bottom: calc(70px + max(20px, env(safe-area-inset-bottom, 20px)));
+  padding-left: max(20px, env(safe-area-inset-left, 20px));
+  padding-right: max(20px, env(safe-area-inset-right, 20px));
+}
+
+/* Tab Navigation */
+.tab-navigation {
+  display: flex;
+  background-color: #1a1a1a;
+  border-top: 1px solid #333;
+  margin: 0;
+  padding: 0;
+  padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+}
+
+.tab-button {
+  flex: 1;
+  padding: 12px 8px;
+  border: none;
+  background-color: transparent;
+  color: #888;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-top: 3px solid transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.tab-button:hover {
+  color: #ffffff;
+  background-color: #333;
+}
+
+.tab-button--active {
+  color: #ffffff;
+  border-top-color: #ff3b30;
+  background-color: #333;
+}
+
+.tab-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.tab-label {
+  font-size: 11px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 
@@ -44,12 +99,16 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 16px;
-  padding-top: max(16px, env(safe-area-inset-top, 16px));
+  padding-top: max(20px, env(safe-area-inset-top, 20px));
   background-color: #1a1a1a;
   border-bottom: 1px solid #333;
   position: sticky;
   top: 0;
   z-index: 100;
+  margin-top: -20px;
+  margin-left: -20px;
+  margin-right: -20px;
+  width: calc(100% + 40px);
 }
 
 .workout-control {
@@ -57,7 +116,7 @@ body {
   height: 44px;
   border: none;
   border-radius: 50%;
-  background-color: #ff3b30;
+  background-color: #339af0;
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -85,6 +144,9 @@ body {
 }
 
 .workout-timer {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 18px;
   font-weight: 600;
   color: #ffffff;
@@ -94,12 +156,13 @@ body {
 .workout-controls {
   display: flex;
   gap: 8px;
+  margin-left: auto;
 }
 
 /* Workout Content */
 .workout-content {
   padding: 16px;
-  padding-bottom: 100px; /* Space for FAB */
+  padding-bottom: 20px; /* Reduced padding since FAB is removed */
 }
 
 /* Exercise Card */
@@ -540,36 +603,7 @@ body {
   background-color: #ff2d55;
 }
 
-/* Floating Action Button */
-.fab {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  width: 56px;
-  height: 56px;
-  border: none;
-  border-radius: 50%;
-  background-color: #ff3b30;
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 24px;
-  font-weight: bold;
-  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.4);
-  transition: all 0.2s ease;
-  z-index: 100;
-}
 
-.fab:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 16px rgba(255, 59, 48, 0.6);
-}
-
-.fab__icon {
-  line-height: 1;
-}
 
 /* Responsive Design */
 @media (max-width: 480px) {
@@ -579,7 +613,7 @@ body {
 
   .workout-content {
     padding: 12px;
-    padding-bottom: 100px;
+    padding-bottom: 20px;
   }
 
   .exercise-header {
@@ -601,14 +635,6 @@ body {
   .keypad-key {
     height: 48px;
     font-size: 16px;
-  }
-
-  .fab {
-    bottom: 16px;
-    right: 16px;
-    width: 48px;
-    height: 48px;
-    font-size: 20px;
   }
 }
 
@@ -641,4 +667,198 @@ body {
   .keypad-key:hover {
     background-color: #444;
   }
+}
+
+/* Plan Content */
+.plan-content {
+  padding: 20px;
+}
+
+.plan-header {
+  margin-bottom: 24px;
+}
+
+.plan-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+}
+
+.plan-name {
+  font-size: 20px;
+  font-weight: 600;
+  color: #ff3b30;
+  margin: 0 0 20px 0;
+}
+
+.plan-exercise-card {
+  background-color: #1a1a1a;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid #333;
+}
+
+.plan-exercise-header {
+  margin-bottom: 12px;
+}
+
+.plan-exercise-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+}
+
+.plan-exercise-details {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.plan-detail {
+  background-color: #333;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+/* History Content */
+.history-content {
+  padding: 20px;
+}
+
+.history-header {
+  margin-bottom: 24px;
+}
+
+.history-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.history-card {
+  background-color: #1a1a1a;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #333;
+}
+
+.history-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #333;
+}
+
+.history-date {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.history-duration {
+  font-size: 14px;
+  color: #888;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+.history-exercises {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-exercise {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-exercise-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.history-exercise-stats {
+  font-size: 14px;
+  color: #888;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #888;
+}
+
+.empty-state p {
+  margin: 8px 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* RPE Picker */
+.rpe-picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  height: 48px;
+  border: 2px solid #333;
+  border-radius: 8px;
+  background-color: #333;
+  transition: all 0.2s ease;
+}
+
+.input-field--active .rpe-picker {
+  border-color: #ff3b30;
+  background-color: #1a1a1a;
+}
+
+.rpe-picker-button {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background-color: #555;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
+
+.rpe-picker-button:hover {
+  background-color: #666;
+  transform: scale(1.05);
+}
+
+.rpe-picker-button:active {
+  transform: scale(0.95);
+}
+
+.rpe-picker-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffffff;
+  min-width: 32px;
+  text-align: center;
 }

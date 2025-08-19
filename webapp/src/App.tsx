@@ -27,6 +27,31 @@ interface WorkoutSet {
   isPR: boolean;
 }
 
+interface WorkoutPlan {
+  id: string;
+  name: string;
+  exercises: {
+    name: string;
+    sets: number;
+    reps: string;
+    weight?: string;
+  }[];
+}
+
+interface WorkoutHistory {
+  id: string;
+  date: string;
+  duration: number;
+  exercises: {
+    name: string;
+    sets: number;
+    totalReps: number;
+    maxWeight: number;
+  }[];
+}
+
+type TabType = 'workout' | 'plan' | 'history';
+
 function tgUser() {
   try {
     return window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -39,10 +64,15 @@ export default function App() {
   const { t, i18n } = useTranslation();
   const user = useMemo(() => tgUser(), []);
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<TabType>('workout');
+
   // Workout state
-  const [workoutStartTime] = useState(Date.now());
+  const [workoutStartTime, setWorkoutStartTime] = useState(Date.now());
   const [isWorkoutActive, setIsWorkoutActive] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
+  const [pausedTime, setPausedTime] = useState(0);
+  const [now, setNow] = useState(Date.now());
   const [currentExercise, setCurrentExercise] = useState("");
   const [currentWeight, setCurrentWeight] = useState("");
   const [currentReps, setCurrentReps] = useState("");
@@ -54,6 +84,10 @@ export default function App() {
   // Workout data - start with empty
   const [workoutSets, setWorkoutSets] = useState<WorkoutSet[]>([]);
   const [exercises, setExercises] = useState<string[]>([]);
+
+  // Plan and history data
+  const [currentPlan, setCurrentPlan] = useState<WorkoutPlan | null>(null);
+  const [workoutHistory, setWorkoutHistory] = useState<WorkoutHistory[]>([]);
 
   // UI state
   const [suggestions, setSuggestions] = useState<Exercise[]>([]);
@@ -68,14 +102,62 @@ export default function App() {
     try {
       window.Telegram?.WebApp?.expand?.();
     } catch {}
+
+    // Load initial data
+    fetchCurrentPlan();
+    fetchWorkoutHistory();
   }, [user, i18n]);
 
-  // Calculate workout duration
+  // Fetch current workout plan
+  const fetchCurrentPlan = async () => {
+    try {
+      const response = await fetch("/api/v1/plan/current", {
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (response.ok) {
+        const plan = await response.json();
+        setCurrentPlan(plan);
+      }
+    } catch (error) {
+      console.error("Error fetching current plan:", error);
+    }
+  };
+
+  // Fetch workout history
+  const fetchWorkoutHistory = async () => {
+    try {
+      const response = await fetch("/api/v1/workout/history", {
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (response.ok) {
+        const history = await response.json();
+        setWorkoutHistory(history);
+      }
+    } catch (error) {
+      console.error("Error fetching workout history:", error);
+    }
+  };
+
+  // Tick the timer every second when active and not paused
+  useEffect(() => {
+    if (!isWorkoutActive || isPaused) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isWorkoutActive, isPaused]);
+
+  // Calculate workout duration with pause support
   const workoutDuration = useMemo(() => {
     if (!isWorkoutActive) return 0;
-    const elapsed = Date.now() - workoutStartTime;
-    return Math.floor(elapsed / 1000);
-  }, [isWorkoutActive, workoutStartTime]);
+
+    if (isPaused) {
+      return Math.floor((pausedTime - workoutStartTime) / 1000);
+    } else {
+      const elapsed = now - workoutStartTime;
+      return Math.floor(elapsed / 1000);
+    }
+  }, [isWorkoutActive, isPaused, workoutStartTime, pausedTime, now]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -109,7 +191,20 @@ export default function App() {
 
   // Handle workout controls
   const handlePauseResume = () => {
-    setIsPaused(!isPaused);
+    if (isPaused) {
+      // Resume workout - adjust start time to account for paused duration
+      const newStartTime = Date.now() - (pausedTime - workoutStartTime);
+      setWorkoutStartTime(newStartTime);
+      setPausedTime(0);
+      setIsPaused(false);
+      setNow(Date.now());
+    } else {
+      // Pause workout - record current time
+      const pausedAt = Date.now();
+      setPausedTime(pausedAt);
+      setIsPaused(true);
+      setNow(pausedAt);
+    }
   };
 
   const handleCancelWorkout = () => {
@@ -328,14 +423,11 @@ export default function App() {
     return setIndex + 1;
   };
 
-  return (
-    <div className="workout-app">
+    // Render workout tracker content
+  const renderWorkoutTracker = () => (
+    <>
       {/* Workout Header */}
       <div className="workout-header">
-        <button className="workout-control workout-control--cancel" onClick={handleCancelWorkout}>
-          <span className="workout-control__icon">×</span>
-        </button>
-
         <div className="workout-timer">
           {formatTime(workoutDuration)}
         </div>
@@ -467,18 +559,33 @@ export default function App() {
               </div>
               <div className={`input-field ${inputMode === "rpe" ? "input-field--active" : ""}`}>
                 <label className="input-label">RPE</label>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  value={currentRPE}
-                  onChange={(e) => setCurrentRPE(e.target.value)}
-                  className="weight-input__field"
-                  placeholder="0"
-                  min="1"
-                  max="10"
-                  step="0.5"
-                  autoFocus={inputMode === "rpe"}
-                />
+                <div className="rpe-picker">
+                  <button
+                    className="rpe-picker-button rpe-picker-button--decrease"
+                    onClick={() => {
+                      const current = parseInt(currentRPE) || 7;
+                      if (current > 5) {
+                        setCurrentRPE((current - 1).toString());
+                      }
+                    }}
+                  >
+                    −
+                  </button>
+                  <div className="rpe-picker-value">
+                    {currentRPE || '7'}
+                  </div>
+                  <button
+                    className="rpe-picker-button rpe-picker-button--increase"
+                    onClick={() => {
+                      const current = parseInt(currentRPE) || 7;
+                      if (current < 10) {
+                        setCurrentRPE((current + 1).toString());
+                      }
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
                 <span className="weight-input__unit">RPE</span>
               </div>
             </div>
@@ -488,20 +595,117 @@ export default function App() {
                 Cancel
               </button>
               <button className="done-button" onClick={handleDone}>
-                {inputMode === "weight" ? "Next" : inputMode === "reps" ? "Next" : "Done"}
+                Done
               </button>
             </div>
           </div>
         </div>
       )}
+    </>
+  );
 
-      {/* Floating Action Button */}
-      <button
-        className="fab"
-        onClick={handleAddExercise}
-      >
-        <span className="fab__icon">+</span>
-      </button>
+  // Render current plan content
+  const renderCurrentPlan = () => (
+    <div className="plan-content">
+      <div className="plan-header">
+        <h2 className="plan-title">Current Workout Plan</h2>
+      </div>
+
+      {currentPlan ? (
+        <div className="plan-details">
+          <h3 className="plan-name">{currentPlan.name}</h3>
+
+          {currentPlan.exercises.map((exercise, index) => (
+            <div key={index} className="plan-exercise-card">
+              <div className="plan-exercise-header">
+                <h4 className="plan-exercise-name">{exercise.name}</h4>
+              </div>
+              <div className="plan-exercise-details">
+                <span className="plan-detail">Sets: {exercise.sets}</span>
+                <span className="plan-detail">Reps: {exercise.reps}</span>
+                {exercise.weight && <span className="plan-detail">Weight: {exercise.weight}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-state">
+          <p>No current workout plan found.</p>
+          <p>Contact your trainer to get a plan assigned.</p>
+        </div>
+      )}
+    </div>
+  );
+
+  // Render history/statistics content
+  const renderHistory = () => (
+    <div className="history-content">
+      <div className="history-header">
+        <h2 className="history-title">Workout History</h2>
+      </div>
+
+      {workoutHistory.length > 0 ? (
+        <div className="history-list">
+          {workoutHistory.map((workout) => (
+            <div key={workout.id} className="history-card">
+              <div className="history-card-header">
+                <span className="history-date">{new Date(workout.date).toLocaleDateString()}</span>
+                <span className="history-duration">{formatTime(workout.duration)}</span>
+              </div>
+
+              <div className="history-exercises">
+                {workout.exercises.map((exercise, index) => (
+                  <div key={index} className="history-exercise">
+                    <span className="history-exercise-name">{exercise.name}</span>
+                    <span className="history-exercise-stats">
+                      {exercise.sets} sets • {exercise.totalReps} reps • {exercise.maxWeight}kg max
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-state">
+          <p>No workout history found.</p>
+          <p>Complete your first workout to see it here!</p>
+        </div>
+      )}
+    </div>
+  );
+
+    return (
+    <div className="workout-app">
+      {/* Tab Content */}
+      {activeTab === 'workout' && renderWorkoutTracker()}
+      {activeTab === 'plan' && renderCurrentPlan()}
+      {activeTab === 'history' && renderHistory()}
+
+      {/* Tab Navigation */}
+      <div className="tab-navigation">
+        <button
+          className={`tab-button ${activeTab === 'workout' ? 'tab-button--active' : ''}`}
+          onClick={() => setActiveTab('workout')}
+        >
+          <span className="tab-icon">🏋️</span>
+          <span className="tab-label">Workout</span>
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'plan' ? 'tab-button--active' : ''}`}
+          onClick={() => setActiveTab('plan')}
+        >
+          <span className="tab-icon">📋</span>
+          <span className="tab-label">Plan</span>
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'history' ? 'tab-button--active' : ''}`}
+          onClick={() => setActiveTab('history')}
+        >
+          <span className="tab-icon">📊</span>
+          <span className="tab-label">History</span>
+        </button>
+      </div>
     </div>
   );
 }
