@@ -226,6 +226,13 @@ export default function App() {
     }
   }, [currentPlan]);
 
+  // Refresh workout history when switching to history tab
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchWorkoutHistory();
+    }
+  }, [activeTab]);
+
   // Save workout state whenever it changes
   useEffect(() => {
     if (workoutSets.length > 0 || exercises.length > 0) {
@@ -601,10 +608,18 @@ export default function App() {
     setInputMode("weight");
     setShowKeypad(true);
 
-    // Restore scroll position after a short delay to ensure UI has updated
+    // Focus on weight input after a short delay to ensure UI has updated
     setTimeout(() => {
-      window.scrollTo(0, currentScrollY);
-    }, 100);
+      const weightInput = document.querySelector('.weight-input__field') as HTMLInputElement;
+      if (weightInput) {
+        weightInput.focus();
+        // Smooth scroll to input section without losing focus
+        const inputSection = document.getElementById('input-section');
+        if (inputSection) {
+          inputSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+    }, 150);
   };
 
   // Handle editing set
@@ -987,16 +1002,19 @@ export default function App() {
           localStorage.removeItem('workoutState');
           console.log('Workout state cleared from localStorage');
 
-        // Show success message
-        try {
-          window.Telegram?.WebApp?.showPopup({
-              title: "Workout Complete! 🏋️",
-              message: `Great job! Your workout has been saved. Duration: ${formatTime(workoutDuration)}`
-          });
-        } catch {}
-      } else {
+          // Refresh workout history to show the completed workout
+          await fetchWorkoutHistory();
+
+          // Show success message
+          try {
+            window.Telegram?.WebApp?.showPopup({
+                title: "Workout Complete! 🏋️",
+                message: `Great job! Your workout has been saved. Duration: ${formatTime(workoutDuration)}`
+            });
+          } catch {}
+        } else {
           console.error("Failed to finish workout:", response.statusText);
-      }
+        }
     } catch (error) {
         console.error("Error finishing workout:", error);
       }
@@ -1250,6 +1268,10 @@ export default function App() {
                     if (inputSection) {
                       inputSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
+                    // Maintain focus on the input field
+                    setTimeout(() => {
+                      e.target.focus();
+                    }, 100);
                   }}
                 />
                 <span className="weight-input__unit">kg</span>
@@ -1272,6 +1294,10 @@ export default function App() {
                     if (inputSection) {
                       inputSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
+                    // Maintain focus on the input field
+                    setTimeout(() => {
+                      e.target.focus();
+                    }, 100);
                   }}
                 />
                 <span className="weight-input__unit">reps</span>
