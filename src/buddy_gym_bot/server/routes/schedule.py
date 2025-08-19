@@ -4,14 +4,15 @@ Schedule API endpoints for workout plan modifications and trainer communication.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
+from ...bot.openai_scheduling import generate_schedule
 from ...db import repo
-from ...services.openai_service import OpenAIService
 
 router = APIRouter()
 
@@ -47,76 +48,56 @@ async def request_schedule_change(request: ScheduleRequest):
 
         logging.info(f"Schedule request from user {request.tg_user_id}: {request.message}")
         logging.info(f"Context provided: {bool(request.context)}")
-
-        # Initialize OpenAI service
-        openai_service = OpenAIService()
-
-        # Build comprehensive prompt for AI
-        ai_prompt = f"""You are an experienced fitness trainer and workout plan specialist. A user has sent you the following request about their workout plan:
-
-USER REQUEST: "{request.message}"
-
-CURRENT CONTEXT:
-"""
-
-        # Add context if available
         if request.context:
-            if request.context.get("current_plan"):
-                plan = request.context["current_plan"]
-                ai_prompt += f"""
-Current Workout Plan: {plan.get("program_name", "Unnamed Plan")}
-- Duration: {plan.get("weeks", "Unknown")} weeks
-- Frequency: {plan.get("days_per_week", "Unknown")} days per week
-- Days scheduled: {len(plan.get("days", []))} days
-"""
+            logging.info(f"Context details: {json.dumps(request.context, default=str)}")
 
-                # Add details about workout days
-                if plan.get("days"):
-                    ai_prompt += "\nWorkout Schedule:\n"
-                    for day in plan["days"]:
-                        ai_prompt += f"- {day.get('weekday', 'Unknown')}: {day.get('focus', 'No focus specified')} ({day.get('time', 'No time set')})\n"
-                        if day.get("exercises"):
-                            ai_prompt += f"  Exercises: {len(day['exercises'])} exercises planned\n"
+        # Get current plan for context
+        current_plan = None
+        if request.context and request.context.get("current_plan"):
+            # Reconstruct the full plan structure from the simplified context
+            try:
+                user_plan = await repo.get_user_plan(request.tg_user_id)
+                if user_plan and user_plan.get("days"):
+                    current_plan = user_plan
+                    logging.info(
+                        f"Using existing plan with {len(user_plan['days'])} days for context"
+                    )
+            except Exception as e:
+                logging.warning(f"Failed to fetch current plan for context: {e}")
 
-            if request.context.get("workout_history"):
-                history = request.context["workout_history"]
-                if history:
-                    ai_prompt += f"\nRecent Workout History: {len(history)} recent sessions"
+        # Generate schedule using the same logic as Telegram bot
+        logging.info("Generating schedule using OpenAI scheduling service")
+        try:
+            new_plan = await generate_schedule(
+                text=request.message,
+                tz="UTC",  # TODO: Get user's timezone from context
+                base_plan=current_plan,
+            )
 
-            if request.context.get("current_workout"):
-                current = request.context["current_workout"]
-                if current.get("active"):
-                    ai_prompt += f"\nCurrent Workout: Active session with {len(current.get('sets', []))} sets completed"
+            if new_plan and new_plan != current_plan:
+                logging.info(f"Generated new plan: {new_plan.get('program_name', 'Unknown')}")
 
-        ai_prompt += """
-
-Please provide a helpful, professional response as a fitness trainer. Consider:
-1. The user's specific request and needs
-2. Their current plan and progress
-3. Safety and proper progression principles
-4. Practical and actionable advice
-
-Be supportive, knowledgeable, and provide specific recommendations where appropriate. Keep your response conversational but professional, as if you're speaking directly to your client. Limit your response to 2-3 paragraphs maximum.
-"""
-
-        # Get AI response
-        if openai_service.is_available():
-            logging.info("Sending request to OpenAI for schedule advice")
-            ai_response = await openai_service.get_completion(ai_prompt, max_tokens=400)
-
-            if ai_response:
-                logging.info(f"OpenAI response received: {len(ai_response)} characters")
+                # Save the new plan to database
+                await repo.upsert_user_plan(request.tg_user_id, new_plan)
 
                 return ScheduleResponse(
                     success=True,
-                    message="Schedule request processed successfully with AI assistance",
-                    response=ai_response,
-                    plan=None,  # TODO: Implement plan modifications based on AI suggestions
+                    message="Schedule updated successfully with AI assistance",
+                    response=f"I've updated your workout plan based on your request: '{request.message}'. The new plan '{new_plan.get('program_name', 'Updated Plan')}' has been generated and is ready for you.",
+                    plan=new_plan,
                 )
             else:
-                logging.warning("OpenAI service returned no response, using fallback")
-        else:
-            logging.info("OpenAI service not available, using fallback response")
+                logging.info("No changes needed to current plan")
+                return ScheduleResponse(
+                    success=True,
+                    message="Schedule request processed successfully",
+                    response=f"I've reviewed your request: '{request.message}'. Your current plan already aligns well with what you're looking for, so no changes were necessary. Keep up the great work!",
+                    plan=current_plan,
+                )
+
+        except Exception as e:
+            logging.exception(f"Failed to generate schedule: {e}")
+            # Fall through to fallback response
 
         # Fallback to pattern-based responses if AI is unavailable
         message_lower = request.message.lower()

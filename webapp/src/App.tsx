@@ -975,12 +975,17 @@ export default function App() {
           tg_user_id: user.id,
           message: scheduleRequest.trim(),
           context: {
-            current_plan: currentPlan,
-            workout_history: workoutHistory.slice(-5), // Last 5 workouts for context
+            current_plan: currentPlan ? {
+              program_name: currentPlan.program_name,
+              weeks: currentPlan.weeks,
+              days_per_week: currentPlan.days_per_week,
+              days_count: currentPlan.days ? currentPlan.days.length : 0
+            } : null,
+            workout_history_count: workoutHistory.length,
             current_workout: {
               active: isWorkoutActive,
               duration: workoutDuration,
-              sets: workoutSets
+              sets_count: workoutSets.length
             }
           }
         })
@@ -1003,6 +1008,14 @@ export default function App() {
         // If the response includes a new plan, update it
         if (data.plan) {
           setCurrentPlan(data.plan);
+          // Also update the workout tab exercises if they exist
+          if (data.plan.days && data.plan.days.length > 0) {
+            const today = new Date().toLocaleDateString('en-US', { weekday: 'short' });
+            const todayWorkout = data.plan.days.find(day => day.weekday === today);
+            if (todayWorkout && todayWorkout.exercises) {
+              setExercises(todayWorkout.exercises.map(ex => ex.name));
+            }
+          }
         }
 
         // Show success message
