@@ -119,6 +119,16 @@ export default function App() {
   const [showExerciseModal, setShowExerciseModal] = useState(false);
   const [exerciseModalData, setExerciseModalData] = useState<ExerciseDBData | null>(null);
 
+  // Schedule request state
+  const [scheduleRequest, setScheduleRequest] = useState("");
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleHistory, setScheduleHistory] = useState<Array<{
+    id: string;
+    request: string;
+    response: string;
+    timestamp: string;
+  }>>([]);
+
   // Save workout state to localStorage
   const saveWorkoutState = useCallback(() => {
     try {
@@ -608,33 +618,30 @@ export default function App() {
     setShowKeypad(true);
   };
 
-  // Switch between weight, reps, and RPE input
+  // Switch between weight and reps input
   const switchInputMode = () => {
     if (inputMode === "weight" && currentWeight) {
       setInputMode("reps");
     } else if (inputMode === "reps" && currentReps) {
-      setInputMode("rpe");
-    } else if (inputMode === "rpe" && currentRPE) {
       // All fields filled, ready to save
       handleDone();
     }
   };
 
   const handleDone = () => {
-    console.log("HandleDone called:", { currentWeight, currentReps, currentRPE, currentExercise, editingSetId });
+    console.log("HandleDone called:", { currentWeight, currentReps, currentExercise, editingSetId });
 
     if (currentWeight && currentReps) {
       const weight = parseFloat(currentWeight);
       const reps = parseInt(currentReps);
-      const rpe = currentRPE ? parseFloat(currentRPE) : null;
 
-      console.log("Parsed values:", { weight, reps, rpe });
+      console.log("Parsed values:", { weight, reps });
 
       if (editingSetId) {
         // Update existing set
         setWorkoutSets(prev => prev.map(set =>
           set.id === editingSetId
-            ? { ...set, weight, reps, rpe }
+            ? { ...set, weight, reps }
             : set
         ));
         setEditingSetId(null);
@@ -645,7 +652,7 @@ export default function App() {
           exercise: currentExercise,
           weight,
           reps,
-          rpe,
+          rpe: null,
           isCompleted: false,
           isPR: false
         };
@@ -659,7 +666,6 @@ export default function App() {
       setShowKeypad(false);
       setCurrentWeight("");
       setCurrentReps("");
-      setCurrentRPE("");
       setInputMode("weight");
 
       // Restore scroll position to where user was before opening input
@@ -670,12 +676,10 @@ export default function App() {
         }
       }, 100);
     } else {
-      console.log("Missing values:", { currentWeight, currentReps, currentRPE });
+      console.log("Missing values:", { currentWeight, currentReps });
       // If we have weight but no reps, switch to reps input
       if (currentWeight && !currentReps) {
         setInputMode("reps");
-      } else if (currentReps && !currentRPE) {
-        setInputMode("rpe");
       }
     }
   };
@@ -710,7 +714,6 @@ export default function App() {
           exercise: set.exercise,
           weight_kg: set.weight,
           reps: set.reps,
-          rpe: set.rpe, // Include RPE in the payload
           is_completed: set.isCompleted,
           workout_session_id: workoutStartTime.toString()
         }),
@@ -723,6 +726,230 @@ export default function App() {
       }
     } catch (error) {
       console.error("Error saving set to API:", error);
+    }
+  };
+
+  // Handle editing exercise name in plan
+  const handlePlanExerciseEdit = (dayIndex: number, exerciseIndex: number) => {
+    if (!currentPlan || !currentPlan.days) return;
+
+    const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
+    const newName = prompt(`Enter new name for "${exercise.name}":`, exercise.name);
+
+    if (newName && newName.trim() && newName !== exercise.name) {
+      // Update the plan state
+      setCurrentPlan(prev => {
+        if (!prev || !prev.days) return prev;
+
+        const updated = { ...prev };
+        updated.days![dayIndex].exercises[exerciseIndex].name = newName.trim();
+        return updated;
+      });
+
+      // Also update workout exercises if they match
+      setExercises(prev => prev.map(ex => ex === exercise.name ? newName.trim() : ex));
+      setWorkoutSets(prev => prev.map(set =>
+        set.exercise === exercise.name ? { ...set, exercise: newName.trim() } : set
+      ));
+    }
+  };
+
+  // Handle editing exercise target in plan
+  const handlePlanExerciseTargetEdit = (dayIndex: number, exerciseIndex: number) => {
+    if (!currentPlan || !currentPlan.days) return;
+
+    const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
+    const newTarget = prompt(`Enter new target for "${exercise.name}":`, exercise.target);
+
+    if (newTarget && newTarget.trim() && newTarget !== exercise.target) {
+      setCurrentPlan(prev => {
+        if (!prev || !prev.days) return prev;
+
+        const updated = { ...prev };
+        updated.days![dayIndex].exercises[exerciseIndex].target = newTarget.trim();
+        return updated;
+      });
+    }
+  };
+
+  // Handle editing set details in plan
+  const handlePlanSetEdit = (dayIndex: number, exerciseIndex: number, setIndex: number) => {
+    if (!currentPlan || !currentPlan.days) return;
+
+    const set = currentPlan.days[dayIndex].exercises[exerciseIndex].sets[setIndex];
+    const newLoad = prompt(`Enter new load for set ${setIndex + 1}:`, set.load || '');
+    const newReps = prompt(`Enter new reps for set ${setIndex + 1}:`, set.reps || '');
+    const newRest = prompt(`Enter new rest time (seconds) for set ${setIndex + 1}:`, set.rest_sec?.toString() || '');
+
+    if (newLoad !== null || newReps !== null || newRest !== null) {
+      setCurrentPlan(prev => {
+        if (!prev || !prev.days) return prev;
+
+        const updated = { ...prev };
+        const targetSet = updated.days![dayIndex].exercises[exerciseIndex].sets[setIndex];
+
+        if (newLoad !== null && newLoad.trim()) targetSet.load = newLoad.trim();
+        if (newReps !== null && newReps.trim()) targetSet.reps = newReps.trim();
+        if (newRest !== null && newRest.trim()) targetSet.rest_sec = parseInt(newRest) || 0;
+
+        return updated;
+      });
+    }
+  };
+
+  // Handle adding new exercise to a day
+  const handleAddPlanExercise = (dayIndex: number) => {
+    if (!currentPlan || !currentPlan.days) return;
+
+    const exerciseName = prompt("Enter exercise name:");
+    if (exerciseName && exerciseName.trim()) {
+      const target = prompt("Enter target muscles:");
+      const load = prompt("Enter load (e.g., 'moderate', 'heavy'):");
+      const reps = prompt("Enter reps (e.g., '3x8-10'):");
+      const rest = prompt("Enter rest time in seconds:");
+
+      if (exerciseName.trim()) {
+        setCurrentPlan(prev => {
+          if (!prev || !prev.days) return prev;
+
+          const updated = { ...prev };
+          const newExercise = {
+            name: exerciseName.trim(),
+            target: target?.trim() || '',
+            sets: [{
+              load: load?.trim() || '',
+              reps: reps?.trim() || '',
+              rest_sec: parseInt(rest || '60') || 60
+            }],
+            equipment_ok: []
+          };
+
+          updated.days![dayIndex].exercises.push(newExercise);
+          return updated;
+        });
+
+        // Also add to workout exercises if not already there
+        setExercises(prev => {
+          if (!prev.includes(exerciseName.trim())) {
+            return [...prev, exerciseName.trim()];
+          }
+          return prev;
+        });
+      }
+    }
+  };
+
+  // Handle adding new set to an exercise
+  const handleAddPlanSet = (dayIndex: number, exerciseIndex: number) => {
+    if (!currentPlan || !currentPlan.days) return;
+
+    const load = prompt("Enter load (e.g., 'moderate', 'heavy'):");
+    const reps = prompt("Enter reps (e.g., '3x8-10'):");
+    const rest = prompt("Enter rest time in seconds:");
+
+    if (load?.trim() || reps?.trim()) {
+      setCurrentPlan(prev => {
+        if (!prev || !prev.days) return prev;
+
+        const updated = { ...prev };
+        const newSet = {
+          load: load?.trim() || '',
+          reps: reps?.trim() || '',
+          rest_sec: parseInt(rest || '60') || 60
+        };
+
+        updated.days![dayIndex].exercises[exerciseIndex].sets.push(newSet);
+        return updated;
+      });
+    }
+  };
+
+  // Handle deleting exercise from plan
+  const handleDeletePlanExercise = (dayIndex: number, exerciseIndex: number) => {
+    if (!currentPlan || !currentPlan.days) return;
+
+    const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
+    if (confirm(`Are you sure you want to delete "${exercise.name}" from the plan?`)) {
+      setCurrentPlan(prev => {
+        if (!prev || !prev.days) return prev;
+
+        const updated = { ...prev };
+        updated.days![dayIndex].exercises.splice(exerciseIndex, 1);
+        return updated;
+      });
+    }
+  };
+
+  // Handle deleting set from plan
+  const handleDeletePlanSet = (dayIndex: number, exerciseIndex: number, setIndex: number) => {
+    if (!currentPlan || !currentPlan.days) return;
+
+    if (confirm(`Are you sure you want to delete set ${setIndex + 1}?`)) {
+      setCurrentPlan(prev => {
+        if (!prev || !prev.days) return prev;
+
+        const updated = { ...prev };
+        updated.days![dayIndex].exercises[exerciseIndex].sets.splice(setIndex, 1);
+        return updated;
+      });
+    }
+  };
+
+  // Handle schedule request
+  const handleScheduleRequest = async () => {
+    if (!scheduleRequest.trim() || !user?.id) return;
+
+    setScheduleLoading(true);
+
+    try {
+      const response = await fetch('/api/v1/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tg_user_id: user.id,
+          message: scheduleRequest.trim(),
+          context: {
+            current_plan: currentPlan,
+            workout_history: workoutHistory.slice(-5), // Last 5 workouts for context
+            current_workout: {
+              active: isWorkoutActive,
+              duration: workoutDuration,
+              sets: workoutSets
+            }
+          }
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+
+        // Add to schedule history
+        const newEntry = {
+          id: Date.now().toString(),
+          request: scheduleRequest.trim(),
+          response: data.response || data.message || 'Request processed successfully',
+          timestamp: new Date().toISOString()
+        };
+
+        setScheduleHistory(prev => [newEntry, ...prev]);
+        setScheduleRequest("");
+
+        // If the response includes a new plan, update it
+        if (data.plan) {
+          setCurrentPlan(data.plan);
+        }
+
+        // Show success message
+        alert(`Request sent successfully!\n\nResponse: ${newEntry.response}`);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(`Failed to send request: ${errorData.message || response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error sending schedule request:', error);
+      alert('Failed to send request. Please check your connection and try again.');
+    } finally {
+      setScheduleLoading(false);
     }
   };
 
@@ -760,17 +987,17 @@ export default function App() {
           localStorage.removeItem('workoutState');
           console.log('Workout state cleared from localStorage');
 
-          // Show success message
-          try {
-            window.Telegram?.WebApp?.showPopup({
+        // Show success message
+        try {
+          window.Telegram?.WebApp?.showPopup({
               title: "Workout Complete! 🏋️",
               message: `Great job! Your workout has been saved. Duration: ${formatTime(workoutDuration)}`
-            });
-          } catch {}
-        } else {
+          });
+        } catch {}
+      } else {
           console.error("Failed to finish workout:", response.statusText);
-        }
-      } catch (error) {
+      }
+    } catch (error) {
         console.error("Error finishing workout:", error);
       }
     }
@@ -831,16 +1058,19 @@ export default function App() {
           // Find plan info for this exercise
           const planExercise = currentPlan?.days?.flatMap(day => day.exercises)?.find(ex => ex.name === exerciseName);
 
-          return (
+  return (
             <div key={exerciseName} className="exercise-card">
               <div className="exercise-header">
-                <h3
-                  className="exercise-title exercise-title--clickable"
-                  onClick={() => handleExerciseNameEdit(exerciseName)}
-                  title="Click to rename exercise"
-                >
-                  {exerciseName}
-                </h3>
+                <div className="exercise-title-container">
+                  <h3 className="exercise-title">{exerciseName}</h3>
+                  <button
+                    className="exercise-action exercise-action--edit"
+                    onClick={() => handleExerciseNameEdit(exerciseName)}
+                    title="Edit exercise name"
+                  >
+                    ✏️
+                  </button>
+                </div>
                 <div className="exercise-actions">
                   <button
                     className="exercise-action"
@@ -882,7 +1112,7 @@ export default function App() {
                     <div className="sets-table-cell sets-table-cell--set">Set</div>
                     <div className="sets-table-cell sets-table-cell--weight">Weight</div>
                     <div className="sets-table-cell sets-table-cell--reps">Reps</div>
-                    <div className="sets-table-cell sets-table-cell--rpe">RPE</div>
+                    <div className="sets-table-cell sets-table-cell--actions">Actions</div>
                   </div>
 
                   {sets.map((set) => (
@@ -899,8 +1129,21 @@ export default function App() {
                       <div className="sets-table-cell sets-table-cell--reps">
                         {set.reps}
                       </div>
-                      <div className="sets-table-cell sets-table-cell--rpe">
-                        {set.rpe !== null ? set.rpe : '-'}
+                      <div className="sets-table-cell sets-table-cell--actions">
+                        <button
+                          className="set-action-button set-action-button--edit"
+                          onClick={() => handleEditSet(set)}
+                          title="Edit set"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          className="set-action-button set-action-button--complete"
+                          onClick={() => handleCompleteSet(set.id)}
+                          title={set.isCompleted ? "Mark incomplete" : "Mark complete"}
+                        >
+                          {set.isCompleted ? "✓" : "○"}
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -923,13 +1166,16 @@ export default function App() {
           return (
             <div key={exerciseName} className="exercise-card">
               <div className="exercise-header">
-                <h3
-                  className="exercise-title exercise-title--clickable"
-                  onClick={() => handleExerciseNameEdit(exerciseName)}
-                  title="Click to rename exercise"
-                >
-                  {exerciseName}
-                </h3>
+                <div className="exercise-title-container">
+                  <h3 className="exercise-title">{exerciseName}</h3>
+                  <button
+                    className="exercise-action exercise-action--edit"
+                    onClick={() => handleExerciseNameEdit(exerciseName)}
+                    title="Edit exercise name"
+                  >
+                    ✏️
+                  </button>
+                </div>
                 <div className="exercise-actions">
                   <button
                     className="exercise-action"
@@ -989,7 +1235,7 @@ export default function App() {
               <div className={`input-field ${inputMode === "weight" ? "input-field--active" : ""}`}>
                 <label className="input-label">Weight</label>
                 <input
-                  type="number"
+                type="number"
                   inputMode="numeric"
                   value={currentWeight}
                   onChange={(e) => setCurrentWeight(e.target.value)}
@@ -1007,11 +1253,11 @@ export default function App() {
                   }}
                 />
                 <span className="weight-input__unit">kg</span>
-              </div>
+            </div>
               <div className={`input-field ${inputMode === "reps" ? "input-field--active" : ""}`}>
                 <label className="input-label">Reps</label>
                 <input
-                  type="number"
+                type="number"
                   inputMode="numeric"
                   value={currentReps}
                   onChange={(e) => setCurrentReps(e.target.value)}
@@ -1029,52 +1275,12 @@ export default function App() {
                   }}
                 />
                 <span className="weight-input__unit">reps</span>
-              </div>
-              <div className={`input-field ${inputMode === "rpe" ? "input-field--active" : ""}`}>
-                <label className="input-label">RPE</label>
-                <div className="rpe-picker">
-                  <button
-                    className="rpe-picker-button rpe-picker-button--decrease"
-                    onClick={() => {
-                      const current = parseInt(currentRPE) || 7;
-                      if (current > 5) {
-                        setCurrentRPE((current - 1).toString());
-                      }
-                    }}
-                  >
-                    −
-                  </button>
-                  <div className="rpe-picker-value">
-                    {currentRPE || '7'}
-                  </div>
-                  <button
-                    className="rpe-picker-button rpe-picker-button--increase"
-                    onClick={() => {
-                      const current = parseInt(currentRPE) || 7;
-                      if (current < 10) {
-                        setCurrentRPE((current + 1).toString());
-                      }
-                    }}
-                  >
-                    +
-                  </button>
-                </div>
-                <span className="weight-input__unit">RPE</span>
-              </div>
             </div>
+          </div>
 
             <div className="input-actions">
-              <button className="cancel-button" onClick={() => {
-                setShowKeypad(false);
-                // Restore scroll position to where user was before opening input
-                if (window.scrollY > 0) {
-                  window.scrollTo(0, Math.max(0, window.scrollY - 100));
-                }
-              }}>
-                Cancel
-              </button>
               <button className="done-button" onClick={handleDone}>
-                Done
+                ✓
               </button>
             </div>
           </div>
@@ -1091,7 +1297,66 @@ export default function App() {
       <div className="plan-content">
         <div className="plan-header">
           <h2 className="plan-title">Current Workout Plan</h2>
+          <button
+            className="plan-edit-button"
+            onClick={() => alert("Plan editing is now available! Click the edit buttons next to exercises and sets.")}
+            title="Plan editing enabled"
+          >
+            ✏️ Edit Plan
+          </button>
         </div>
+
+        {/* Schedule Request Section */}
+        <div className="schedule-request-section">
+          <div className="schedule-request-header">
+            <h3 className="schedule-request-title">Request Plan Changes</h3>
+            <p className="schedule-request-description">
+              Ask your trainer to modify your workout plan, add exercises, or adjust training parameters.
+            </p>
+          </div>
+
+          <div className="schedule-request-form">
+            <textarea
+              className="schedule-request-input"
+              value={scheduleRequest}
+              onChange={(e) => setScheduleRequest(e.target.value)}
+              placeholder="e.g., 'Can we add more chest exercises on Monday?' or 'I want to focus more on strength training' or 'Please reduce the volume, I'm feeling fatigued'"
+              rows={3}
+              disabled={scheduleLoading}
+            />
+            <button
+              className="schedule-request-button"
+              onClick={handleScheduleRequest}
+              disabled={!scheduleRequest.trim() || scheduleLoading}
+            >
+              {scheduleLoading ? 'Sending...' : 'Send Request'}
+            </button>
+          </div>
+        </div>
+
+        {/* Schedule History */}
+        {scheduleHistory.length > 0 && (
+          <div className="schedule-history-section">
+            <h3 className="schedule-history-title">Recent Conversations</h3>
+            <div className="schedule-history-list">
+              {scheduleHistory.slice(0, 5).map((entry) => (
+                <div key={entry.id} className="schedule-history-item">
+                  <div className="schedule-history-request">
+                    <div className="schedule-history-label">You:</div>
+                    <div className="schedule-history-content">{entry.request}</div>
+                    <div className="schedule-history-time">
+                      {new Date(entry.timestamp).toLocaleDateString()} {new Date(entry.timestamp).toLocaleTimeString()}
+                    </div>
+                  </div>
+                  <div className="schedule-history-response">
+                    <div className="schedule-history-label">Trainer:</div>
+                    <div className="schedule-history-content">{entry.response}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {currentPlan ? (
           <div className="plan-details">
@@ -1122,11 +1387,62 @@ export default function App() {
                                   {set.reps && ` • ${set.reps} reps`}
                                   {set.rest_sec && ` • ${set.rest_sec}s rest`}
                                 </span>
+                                <button
+                                  className="plan-set-action plan-set-action--edit"
+                                  onClick={() => handlePlanSetEdit(dayIndex, exerciseIndex, setIndex)}
+                                  title="Edit set"
+                                >
+                                  ✏️
+                                </button>
+                                <button
+                                  className="plan-set-action plan-set-action--delete"
+                                  onClick={() => handleDeletePlanSet(dayIndex, exerciseIndex, setIndex)}
+                                  title="Delete set"
+                                >
+                                  ×
+                                </button>
                               </div>
                             ))}
                           </div>
+                          <div className="plan-exercise-actions">
+                            <button
+                              className="plan-exercise-action plan-exercise-action--edit"
+                              onClick={() => handlePlanExerciseEdit(dayIndex, exerciseIndex)}
+                              title="Edit exercise name"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              className="plan-exercise-action plan-exercise-action--target"
+                              onClick={() => handlePlanExerciseTargetEdit(dayIndex, exerciseIndex)}
+                              title="Edit exercise target"
+                            >
+                              ⚙️
+                            </button>
+                            <button
+                              className="plan-exercise-action plan-exercise-action--add-set"
+                              onClick={() => handleAddPlanSet(dayIndex, exerciseIndex)}
+                              title="Add new set"
+                            >
+                              +
+                            </button>
+                            <button
+                              className="plan-exercise-action plan-exercise-action--delete"
+                              onClick={() => handleDeletePlanExercise(dayIndex, exerciseIndex)}
+                              title="Delete exercise"
+                            >
+                              ×
+                            </button>
+                          </div>
                         </div>
                       ))}
+                      <button
+                        className="plan-add-exercise-button"
+                        onClick={() => handleAddPlanExercise(dayIndex)}
+                        title="Add new exercise to this day"
+                      >
+                        + Add Exercise
+                      </button>
                     </div>
                   ) : (
                     <div className="empty-state">
@@ -1244,7 +1560,7 @@ export default function App() {
                       <span className="history-duration">
                         {session.sets.length > 0 ? `${session.sets.length} sets total` : '00:00:00'}
                       </span>
-                    </div>
+          </div>
 
                     <div className="history-exercises">
                       {Object.values(exerciseGroups).map((exercise: { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }, exerciseIndex) => (
@@ -1281,33 +1597,33 @@ export default function App() {
             {/* Tab Navigation */}
       {!showKeypad && (
         <div className="tab-navigation">
-                          <button
-          className={`tab-button ${activeTab === 'workout' ? 'tab-button--active' : ''}`}
-          onClick={() => {
-            setActiveTab('workout');
-            setShowKeypad(false);
-          }}
-        >
-          Workout
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'plan' ? 'tab-button--active' : ''}`}
-          onClick={() => {
-            setActiveTab('plan');
-            setShowKeypad(false);
-          }}
-        >
-          Plan
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'history' ? 'tab-button--active' : ''}`}
-          onClick={() => {
-            setActiveTab('history');
-            setShowKeypad(false);
-          }}
-        >
-          History
-        </button>
+          <button
+            className={`tab-button ${activeTab === 'plan' ? 'tab-button--active' : ''}`}
+            onClick={() => {
+              setActiveTab('plan');
+              setShowKeypad(false);
+            }}
+          >
+            Plan
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'workout' ? 'tab-button--active' : ''}`}
+            onClick={() => {
+              setActiveTab('workout');
+              setShowKeypad(false);
+            }}
+          >
+            Workout
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'history' ? 'tab-button--active' : ''}`}
+            onClick={() => {
+              setActiveTab('history');
+              setShowKeypad(false);
+            }}
+          >
+            History
+          </button>
         </div>
       )}
 

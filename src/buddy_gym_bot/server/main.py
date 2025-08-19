@@ -25,6 +25,7 @@ from ..config import SETTINGS
 from ..db import close_db
 from .routes.exercises import router as r_exercises
 from .routes.plan import router as r_plan
+from .routes.schedule import router as r_schedule
 from .routes.share import router as r_share
 from .routes.workout import router as r_workout
 
@@ -140,3 +141,4 @@ app.include_router(r_exercises, prefix="/api/v1", tags=["exercises"])
 app.include_router(r_workout, prefix="/api/v1", tags=["workout"])
 app.include_router(r_share, prefix="/api/v1", tags=["share"])
 app.include_router(r_plan, prefix="/api/v1", tags=["plan"])
+app.include_router(r_schedule, prefix="/api/v1", tags=["schedule"])
