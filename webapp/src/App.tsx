@@ -119,8 +119,12 @@ export default function App() {
 
       if (response.ok) {
         const data = await response.json();
+        console.log("Plan API response:", data);
         if (data.success && data.plan) {
+          console.log("Setting current plan:", data.plan);
           setCurrentPlan(data.plan);
+        } else {
+          console.log("No plan data or API not successful");
         }
       }
     } catch (error) {
@@ -613,37 +617,47 @@ export default function App() {
   );
 
   // Render current plan content
-  const renderCurrentPlan = () => (
-    <div className="plan-content">
-      <div className="plan-header">
-        <h2 className="plan-title">Current Workout Plan</h2>
+  const renderCurrentPlan = () => {
+    console.log("Rendering plan, currentPlan:", currentPlan);
+
+    return (
+      <div className="plan-content">
+        <div className="plan-header">
+          <h2 className="plan-title">Current Workout Plan</h2>
+        </div>
+
+        {currentPlan ? (
+          <div className="plan-details">
+            <h3 className="plan-name">{currentPlan.name || 'Unnamed Plan'}</h3>
+
+            {currentPlan.exercises && currentPlan.exercises.length > 0 ? (
+              currentPlan.exercises.map((exercise, index) => (
+                <div key={index} className="plan-exercise-card">
+                  <div className="plan-exercise-header">
+                    <h4 className="plan-exercise-name">{exercise.name}</h4>
+                  </div>
+                  <div className="plan-exercise-details">
+                    <span className="plan-detail">Sets: {exercise.sets}</span>
+                    <span className="plan-detail">Reps: {exercise.reps}</span>
+                    {exercise.weight && <span className="plan-detail">Weight: {exercise.weight}</span>}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="empty-state">
+                <p>Plan has no exercises defined.</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <p>No current workout plan found.</p>
+            <p>Contact your trainer to get a plan assigned.</p>
+          </div>
+        )}
       </div>
-
-      {currentPlan ? (
-        <div className="plan-details">
-          <h3 className="plan-name">{currentPlan.name}</h3>
-
-          {currentPlan.exercises.map((exercise, index) => (
-            <div key={index} className="plan-exercise-card">
-              <div className="plan-exercise-header">
-                <h4 className="plan-exercise-name">{exercise.name}</h4>
-              </div>
-              <div className="plan-exercise-details">
-                <span className="plan-detail">Sets: {exercise.sets}</span>
-                <span className="plan-detail">Reps: {exercise.reps}</span>
-                {exercise.weight && <span className="plan-detail">Weight: {exercise.weight}</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="empty-state">
-          <p>No current workout plan found.</p>
-          <p>Contact your trainer to get a plan assigned.</p>
-        </div>
-      )}
-    </div>
-  );
+    );
+  };
 
   // Render history/statistics content
   const renderHistory = () => (

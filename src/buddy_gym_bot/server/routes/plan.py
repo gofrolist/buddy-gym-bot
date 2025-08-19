@@ -32,10 +32,12 @@ async def get_current_plan(
 
         # Get user's plan
         plan_data = await repo.get_user_plan(user.id)
+        logging.info(f"User {user.id} plan data: {plan_data}")
 
         if plan_data:
             return PlanResponse(success=True, plan=plan_data)
         else:
+            logging.info(f"No plan found for user {user.id}")
             return PlanResponse(success=True, plan=None)
 
     except Exception as e:
