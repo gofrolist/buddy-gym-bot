@@ -684,6 +684,47 @@ body {
   margin: 0 0 20px 0;
 }
 
+.plan-day-card {
+  background-color: #1a1a1a;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  border: 1px solid #333;
+}
+
+.plan-day-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #333;
+}
+
+.plan-day-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 8px 0;
+}
+
+.plan-day-focus {
+  display: block;
+  font-size: 14px;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.plan-day-time {
+  display: block;
+  font-size: 12px;
+  color: #666;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+.plan-day-exercises {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .plan-exercise-card {
   background-color: #1a1a1a;
   border-radius: 12px;
@@ -697,10 +738,17 @@ body {
 }
 
 .plan-exercise-name {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: #ffffff;
-  margin: 0;
+  margin: 0 0 4px 0;
+}
+
+.plan-exercise-target {
+  display: block;
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
 }
 
 .plan-exercise-details {
@@ -716,6 +764,15 @@ body {
   font-size: 14px;
   color: #ffffff;
   font-weight: 500;
+}
+
+.plan-set-detail {
+  margin-bottom: 4px;
+}
+
+.plan-set-detail .plan-detail {
+  background-color: #2a2a2a;
+  border: 1px solid #444;
 }
 
 /* History Content */

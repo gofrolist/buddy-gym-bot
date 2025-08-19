@@ -28,14 +28,26 @@ interface WorkoutSet {
 }
 
 interface WorkoutPlan {
-  id: string;
-  name: string;
-  exercises: {
-    name: string;
-    sets: number;
-    reps: string;
-    weight?: string;
+  id?: string;
+  program_name?: string;
+  days?: {
+    weekday: string;
+    time: string;
+    focus: string;
+    exercises: {
+      name: string;
+      target: string;
+      sets: {
+        load?: string;
+        reps?: string;
+        rest_sec?: number;
+      }[];
+      equipment_ok?: string[];
+    }[];
   }[];
+  weeks?: number;
+  timezone?: string;
+  days_per_week?: number;
 }
 
 interface WorkoutHistory {
@@ -616,7 +628,7 @@ export default function App() {
     </>
   );
 
-  // Render current plan content
+    // Render current plan content
   const renderCurrentPlan = () => {
     console.log("Rendering plan, currentPlan:", currentPlan);
 
@@ -628,24 +640,49 @@ export default function App() {
 
         {currentPlan ? (
           <div className="plan-details">
-            <h3 className="plan-name">{currentPlan.name || 'Unnamed Plan'}</h3>
+            <h3 className="plan-name">{currentPlan.program_name || 'Unnamed Plan'}</h3>
 
-            {currentPlan.exercises && currentPlan.exercises.length > 0 ? (
-              currentPlan.exercises.map((exercise, index) => (
-                <div key={index} className="plan-exercise-card">
-                  <div className="plan-exercise-header">
-                    <h4 className="plan-exercise-name">{exercise.name}</h4>
+            {currentPlan.days && currentPlan.days.length > 0 ? (
+              currentPlan.days.map((day, dayIndex) => (
+                <div key={dayIndex} className="plan-day-card">
+                  <div className="plan-day-header">
+                    <h4 className="plan-day-name">{day.weekday}</h4>
+                    <span className="plan-day-focus">{day.focus}</span>
+                    <span className="plan-day-time">{day.time}</span>
                   </div>
-                  <div className="plan-exercise-details">
-                    <span className="plan-detail">Sets: {exercise.sets}</span>
-                    <span className="plan-detail">Reps: {exercise.reps}</span>
-                    {exercise.weight && <span className="plan-detail">Weight: {exercise.weight}</span>}
-                  </div>
+
+                  {day.exercises && day.exercises.length > 0 ? (
+                    <div className="plan-day-exercises">
+                      {day.exercises.map((exercise, exerciseIndex) => (
+                        <div key={exerciseIndex} className="plan-exercise-card">
+                          <div className="plan-exercise-header">
+                            <h5 className="plan-exercise-name">{exercise.name}</h5>
+                            <span className="plan-exercise-target">{exercise.target}</span>
+                          </div>
+                          <div className="plan-exercise-details">
+                            {exercise.sets.map((set, setIndex) => (
+                              <div key={setIndex} className="plan-set-detail">
+                                <span className="plan-detail">
+                                  {set.load && `${set.load} load`}
+                                  {set.reps && ` • ${set.reps} reps`}
+                                  {set.rest_sec && ` • ${set.rest_sec}s rest`}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      <p>No exercises for this day.</p>
+                    </div>
+                  )}
                 </div>
               ))
             ) : (
               <div className="empty-state">
-                <p>Plan has no exercises defined.</p>
+                <p>Plan has no days defined.</p>
               </div>
             )}
           </div>
