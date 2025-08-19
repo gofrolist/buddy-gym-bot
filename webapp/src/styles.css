@@ -181,6 +181,31 @@ body {
   color: #ffffff;
 }
 
+.exercise-plan-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background-color: #2a2a2a;
+  border-radius: 6px;
+  border: 1px solid #444;
+}
+
+.plan-target {
+  font-size: 12px;
+  color: #ccc;
+  font-style: italic;
+}
+
+.plan-sets {
+  font-size: 11px;
+  color: #888;
+  background-color: #333;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
 .exercise-actions {
   display: flex;
   gap: 8px;
@@ -678,77 +703,95 @@ body {
 }
 
 .plan-name {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   color: #ff3b30;
-  margin: 0 0 20px 0;
+  margin: 0 0 16px 0;
+  line-height: 1.3;
 }
 
 .plan-day-card {
   background-color: #1a1a1a;
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 20px;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
   border: 1px solid #333;
 }
 
 .plan-day-header {
-  margin-bottom: 16px;
-  padding-bottom: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
   border-bottom: 1px solid #333;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .plan-day-name {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: #ffffff;
-  margin: 0 0 8px 0;
+  margin: 0;
+  background-color: #ff3b30;
+  padding: 4px 8px;
+  border-radius: 4px;
+  min-width: 40px;
+  text-align: center;
 }
 
 .plan-day-focus {
-  display: block;
-  font-size: 14px;
-  color: #888;
-  margin-bottom: 4px;
+  font-size: 13px;
+  color: #ccc;
+  flex: 1;
+  min-width: 200px;
 }
 
 .plan-day-time {
-  display: block;
   font-size: 12px;
-  color: #666;
+  color: #888;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  background-color: #333;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .plan-day-exercises {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .plan-exercise-card {
-  background-color: #1a1a1a;
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 16px;
-  border: 1px solid #333;
+  background-color: #222;
+  border-radius: 6px;
+  padding: 10px;
+  border: 1px solid #444;
 }
 
 .plan-exercise-header {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .plan-exercise-name {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: #ffffff;
-  margin: 0 0 4px 0;
+  margin: 0;
+  flex: 1;
 }
 
 .plan-exercise-target {
-  display: block;
-  font-size: 12px;
-  color: #888;
+  font-size: 11px;
+  color: #999;
   font-style: italic;
+  text-align: right;
+  max-width: 120px;
+  line-height: 1.3;
 }
 
 .plan-exercise-details {
@@ -759,20 +802,22 @@ body {
 
 .plan-detail {
   background-color: #333;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
   color: #ffffff;
   font-weight: 500;
 }
 
 .plan-set-detail {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .plan-set-detail .plan-detail {
   background-color: #2a2a2a;
   border: 1px solid #444;
+  font-size: 11px;
+  padding: 3px 6px;
 }
 
 /* History Content */

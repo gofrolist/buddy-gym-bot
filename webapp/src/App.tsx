@@ -120,6 +120,25 @@ export default function App() {
     fetchWorkoutHistory();
   }, [user, i18n]);
 
+  // Auto-populate workout with plan exercises when plan is loaded
+  useEffect(() => {
+    if (currentPlan && currentPlan.days && currentPlan.days.length > 0) {
+      // Get today's workout or first available workout
+      const today = new Date().toLocaleDateString('en-US', { weekday: 'short' });
+      const todayWorkout = currentPlan.days.find(day =>
+        day.weekday === today
+      ) || currentPlan.days[0]; // Fallback to first day if today not found
+
+      if (todayWorkout && todayWorkout.exercises) {
+        // Extract unique exercise names from the plan
+        const planExercises = todayWorkout.exercises.map(ex => ex.name);
+        setExercises(planExercises);
+
+        console.log("Auto-populated workout with plan exercises:", planExercises);
+      }
+    }
+  }, [currentPlan]);
+
   // Fetch current workout plan
   const fetchCurrentPlan = async () => {
     if (!user?.id) return;
@@ -472,71 +491,101 @@ export default function App() {
       {/* Workout Content */}
       <div className="workout-content">
         {/* Show exercises that have sets */}
-        {Object.entries(exerciseGroups).map(([exerciseName, sets]) => (
-          <div key={exerciseName} className="exercise-card">
-            <div className="exercise-header">
-              <h3 className="exercise-title">{exerciseName}</h3>
-              <div className="exercise-actions">
-                <button className="exercise-action">?</button>
-                <button className="exercise-action">⋮</button>
-              </div>
-            </div>
+        {Object.entries(exerciseGroups).map(([exerciseName, sets]) => {
+          // Find plan info for this exercise
+          const planExercise = currentPlan?.days?.flatMap(day => day.exercises)?.find(ex => ex.name === exerciseName);
 
-            <div className="sets-container">
-              <div className="sets-table">
-                <div className="sets-table-header">
-                  <div className="sets-table-cell sets-table-cell--set">Set</div>
-                  <div className="sets-table-cell sets-table-cell--weight">Weight</div>
-                  <div className="sets-table-cell sets-table-cell--reps">Reps</div>
-                  <div className="sets-table-cell sets-table-cell--rpe">RPE</div>
+          return (
+            <div key={exerciseName} className="exercise-card">
+              <div className="exercise-header">
+                <h3 className="exercise-title">{exerciseName}</h3>
+                <div className="exercise-actions">
+                  <button className="exercise-action">?</button>
+                  <button className="exercise-action">⋮</button>
                 </div>
+              </div>
 
-                {sets.map((set) => (
-                  <div key={set.id} className={`sets-table-row ${set.isCompleted ? 'sets-table-row--completed' : ''}`}>
-                    <div className="sets-table-cell sets-table-cell--set">
-                      <div className="set-number">
-                        {getSetNumber(exerciseName, set.id)}
-                        {set.isPR && <span className="pr-badge">PR</span>}
+              {/* Show plan info if available */}
+              {planExercise && (
+                <div className="exercise-plan-info">
+                  <span className="plan-target">{planExercise.target}</span>
+                  {planExercise.sets && (
+                    <span className="plan-sets">Planned: {planExercise.sets.length} sets</span>
+                  )}
+                </div>
+              )}
+
+              <div className="sets-container">
+                <div className="sets-table">
+                  <div className="sets-table-header">
+                    <div className="sets-table-cell sets-table-cell--set">Set</div>
+                    <div className="sets-table-cell sets-table-cell--weight">Weight</div>
+                    <div className="sets-table-cell sets-table-cell--reps">Reps</div>
+                    <div className="sets-table-cell sets-table-cell--rpe">RPE</div>
+                  </div>
+
+                  {sets.map((set) => (
+                    <div key={set.id} className={`sets-table-row ${set.isCompleted ? 'sets-table-row--completed' : ''}`}>
+                      <div className="sets-table-cell sets-table-cell--set">
+                        <div className="set-number">
+                          {getSetNumber(exerciseName, set.id)}
+                          {set.isPR && <span className="pr-badge">PR</span>}
+                        </div>
+                      </div>
+                      <div className="sets-table-cell sets-table-cell--weight">
+                        {set.weight} kg
+                      </div>
+                      <div className="sets-table-cell sets-table-cell--reps">
+                        {set.reps}
+                      </div>
+                      <div className="sets-table-cell sets-table-cell--rpe">
+                        {set.rpe !== null ? set.rpe : '-'}
                       </div>
                     </div>
-                    <div className="sets-table-cell sets-table-cell--weight">
-                      {set.weight} kg
-                    </div>
-                    <div className="sets-table-cell sets-table-cell--reps">
-                      {set.reps}
-                    </div>
-                    <div className="sets-table-cell sets-table-cell--rpe">
-                      {set.rpe !== null ? set.rpe : '-'}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+
+                <div className="add-set-row">
+                  <span className="add-set-label">Set</span>
+                  <button className="add-button" onClick={() => handleAddSet(exerciseName)}>+</button>
+                </div>
               </div>
+            </div>
+          );
+        })}
+
+        {/* Show exercises without sets */}
+        {exercises.filter(ex => !workoutSets.some(set => set.exercise === ex)).map(exerciseName => {
+          // Find plan info for this exercise
+          const planExercise = currentPlan?.days?.flatMap(day => day.exercises)?.find(ex => ex.name === exerciseName);
+
+          return (
+            <div key={exerciseName} className="exercise-card">
+              <div className="exercise-header">
+                <h3 className="exercise-title">{exerciseName}</h3>
+                <div className="exercise-actions">
+                  <button className="exercise-action">?</button>
+                  <button className="exercise-action">⋮</button>
+                </div>
+              </div>
+
+              {/* Show plan info if available */}
+              {planExercise && (
+                <div className="exercise-plan-info">
+                  <span className="plan-target">{planExercise.target}</span>
+                  {planExercise.sets && (
+                    <span className="plan-sets">Planned: {planExercise.sets.length} sets</span>
+                  )}
+                </div>
+              )}
 
               <div className="add-set-row">
                 <span className="add-set-label">Set</span>
                 <button className="add-button" onClick={() => handleAddSet(exerciseName)}>+</button>
               </div>
             </div>
-          </div>
-        ))}
-
-        {/* Show exercises without sets */}
-        {exercises.filter(ex => !workoutSets.some(set => set.exercise === ex)).map(exerciseName => (
-          <div key={exerciseName} className="exercise-card">
-            <div className="exercise-header">
-              <h3 className="exercise-title">{exerciseName}</h3>
-              <div className="exercise-actions">
-                <button className="exercise-action">?</button>
-                <button className="exercise-action">⋮</button>
-              </div>
-            </div>
-
-            <div className="add-set-row">
-              <span className="add-set-label">Set</span>
-              <button className="add-button" onClick={() => handleAddSet(exerciseName)}>+</button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
 
         <div className="action-buttons">
           <button className="action-button action-button--exercise" onClick={handleAddExercise}>
