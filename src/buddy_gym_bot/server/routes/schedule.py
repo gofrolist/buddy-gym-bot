@@ -4,7 +4,6 @@ Schedule API endpoints for workout plan modifications and trainer communication.
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
@@ -62,31 +61,31 @@ CURRENT CONTEXT:
 
         # Add context if available
         if request.context:
-            if request.context.get('current_plan'):
-                plan = request.context['current_plan']
+            if request.context.get("current_plan"):
+                plan = request.context["current_plan"]
                 ai_prompt += f"""
-Current Workout Plan: {plan.get('program_name', 'Unnamed Plan')}
-- Duration: {plan.get('weeks', 'Unknown')} weeks
-- Frequency: {plan.get('days_per_week', 'Unknown')} days per week
-- Days scheduled: {len(plan.get('days', []))} days
+Current Workout Plan: {plan.get("program_name", "Unnamed Plan")}
+- Duration: {plan.get("weeks", "Unknown")} weeks
+- Frequency: {plan.get("days_per_week", "Unknown")} days per week
+- Days scheduled: {len(plan.get("days", []))} days
 """
 
                 # Add details about workout days
-                if plan.get('days'):
+                if plan.get("days"):
                     ai_prompt += "\nWorkout Schedule:\n"
-                    for day in plan['days']:
+                    for day in plan["days"]:
                         ai_prompt += f"- {day.get('weekday', 'Unknown')}: {day.get('focus', 'No focus specified')} ({day.get('time', 'No time set')})\n"
-                        if day.get('exercises'):
+                        if day.get("exercises"):
                             ai_prompt += f"  Exercises: {len(day['exercises'])} exercises planned\n"
 
-            if request.context.get('workout_history'):
-                history = request.context['workout_history']
+            if request.context.get("workout_history"):
+                history = request.context["workout_history"]
                 if history:
                     ai_prompt += f"\nRecent Workout History: {len(history)} recent sessions"
 
-            if request.context.get('current_workout'):
-                current = request.context['current_workout']
-                if current.get('active'):
+            if request.context.get("current_workout"):
+                current = request.context["current_workout"]
+                if current.get("active"):
                     ai_prompt += f"\nCurrent Workout: Active session with {len(current.get('sets', []))} sets completed"
 
         ai_prompt += """
