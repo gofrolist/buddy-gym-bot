@@ -25,6 +25,7 @@ interface WorkoutSet {
   rpe: number | null;
   isCompleted: boolean;
   isPR: boolean;
+  isBackendData?: boolean; // Optional flag to identify backend data
 }
 
 interface WorkoutPlan {
@@ -1495,122 +1496,148 @@ export default function App() {
 
     // Render history/statistics content
   const renderHistory = () => {
-    // Use actual workout history from backend if available, otherwise show current workout sets
-    const hasBackendHistory = workoutHistory.length > 0;
+    // Always show current workout sets grouped by exercise, regardless of backend history
+    const currentWorkoutSessions = workoutSets.reduce((sessions, set) => {
+      const today = new Date().toDateString();
 
-    if (hasBackendHistory) {
-      // Display backend workout history
-      return (
-        <div className="history-content">
-          <div className="history-header">
-            <h2 className="history-title">Workout History</h2>
-          </div>
+      if (!sessions[today]) {
+        sessions[today] = {
+          date: today,
+          sets: [],
+          totalDuration: 0
+        };
+      }
 
-          <div className="history-list">
-            {workoutHistory.map((workout) => (
-              <div key={workout.id} className="history-card">
-                <div className="history-card-header">
-                  <span className="history-date">{new Date(workout.date).toLocaleDateString()}</span>
-                  <span className="history-duration">
-                    {workout.exercises.reduce((total, ex) => total + ex.sets, 0)} sets total
-                  </span>
-                </div>
+      sessions[today].sets.push(set);
+      return sessions;
+    }, {} as Record<string, { date: string; sets: WorkoutSet[]; totalDuration: number }>);
 
-                <div className="history-exercises">
-                  {workout.exercises.map((exercise, index) => (
-                    <div key={index} className="history-exercise">
-                      <span className="history-exercise-name">{exercise.name}</span>
-                      <span className="history-exercise-stats">
-                        {exercise.sets} sets • {exercise.totalReps} reps • {exercise.maxWeight}kg max
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    } else {
-      // Fallback: Show current workout sets grouped by date
-      const workoutSessions = workoutSets.reduce((sessions, set) => {
-        const today = new Date().toDateString();
+    // Convert to array and sort by date (newest first)
+    const sortedCurrentSessions = Object.values(currentWorkoutSessions)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-        if (!sessions[today]) {
-          sessions[today] = {
-            date: today,
-            sets: [],
-            totalDuration: 0
+    // Combine backend history with current session data
+    const allSessions = [...sortedCurrentSessions];
+
+    // Add backend history if available
+    if (workoutHistory.length > 0) {
+      workoutHistory.forEach(workout => {
+        // Check if we already have a session for this date
+        const existingSessionIndex = allSessions.findIndex(session =>
+          new Date(session.date).toDateString() === new Date(workout.date).toDateString()
+        );
+
+        if (existingSessionIndex >= 0) {
+          // Merge backend data with current session data
+          const existingSession = allSessions[existingSessionIndex];
+          // Add backend exercises to the existing session
+          workout.exercises.forEach(backendExercise => {
+            // Check if exercise already exists in current session
+            const existingExercise = existingSession.sets.find(set => set.exercise === backendExercise.name);
+            if (!existingExercise) {
+              // Add placeholder set for backend exercise (since we don't have full set data)
+              allSessions[existingSessionIndex].sets.push({
+                id: `backend-${workout.id}-${backendExercise.name}`,
+                exercise: backendExercise.name,
+                weight: 0,
+                reps: 0,
+                rpe: null,
+                isCompleted: true,
+                isPR: false,
+                isBackendData: true // Flag to identify backend data
+              });
+            }
+          });
+        } else {
+          // Create new session for backend data
+          const backendSession = {
+            date: workout.date,
+            sets: workout.exercises.map(ex => ({
+              id: `backend-${workout.id}-${ex.name}`,
+              exercise: ex.name,
+              weight: 0,
+              reps: 0,
+              rpe: null,
+              isCompleted: true,
+              isPR: false,
+              isBackendData: true
+            })),
+            totalDuration: workout.duration,
+            isBackendData: true
           };
+          allSessions.push(backendSession);
         }
+      });
+    }
 
-        sessions[today].sets.push(set);
-        return sessions;
-      }, {} as Record<string, { date: string; sets: WorkoutSet[]; totalDuration: number }>);
+    // Sort all sessions by date (newest first)
+    allSessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      // Convert to array and sort by date (newest first)
-      const sortedSessions = Object.values(workoutSessions)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return (
+      <div className="history-content">
+        <div className="history-header">
+          <h2 className="history-title">Workout History</h2>
+        </div>
 
-      return (
-        <div className="history-content">
-          <div className="history-header">
-            <h2 className="history-title">Workout History</h2>
-          </div>
+        {allSessions.length > 0 ? (
+          <div className="history-list">
+            {allSessions.map((session, sessionIndex) => {
+              // Group sets by exercise within this session
+              const exerciseGroups: Record<string, { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }> = {};
 
-          {sortedSessions.length > 0 ? (
-            <div className="history-list">
-              {sortedSessions.map((session, sessionIndex) => {
-                // Group sets by exercise within this session
-                const exerciseGroups: Record<string, { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }> = {};
+              session.sets.forEach(set => {
+                if (!exerciseGroups[set.exercise]) {
+                  exerciseGroups[set.exercise] = {
+                    name: set.exercise,
+                    sets: [],
+                    totalReps: 0,
+                    maxWeight: 0
+                  };
+                }
 
-                session.sets.forEach(set => {
-                  if (!exerciseGroups[set.exercise]) {
-                    exerciseGroups[set.exercise] = {
-                      name: set.exercise,
-                      sets: [],
-                      totalReps: 0,
-                      maxWeight: 0
-                    };
-                  }
-
-                  exerciseGroups[set.exercise].sets.push(set);
+                exerciseGroups[set.exercise].sets.push(set);
+                if (!set.isBackendData) {
                   exerciseGroups[set.exercise].totalReps += set.reps;
                   exerciseGroups[set.exercise].maxWeight = Math.max(exerciseGroups[set.exercise].maxWeight, set.weight);
-                });
+                }
+              });
 
-                return (
-                  <div key={sessionIndex} className="history-card">
-                    <div className="history-card-header">
-                      <span className="history-date">{new Date(session.date).toLocaleDateString()}</span>
-                      <span className="history-duration">
-                        {session.sets.length > 0 ? `${session.sets.length} sets total` : '00:00:00'}
-                      </span>
-          </div>
-
-                    <div className="history-exercises">
-                      {Object.values(exerciseGroups).map((exercise: { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }, exerciseIndex) => (
-                        <div key={exerciseIndex} className="history-exercise">
-                          <span className="history-exercise-name">{exercise.name}</span>
-                                                   <span className="history-exercise-stats">
-                           {exercise.sets.length} sets • {exercise.totalReps} reps • {exercise.maxWeight}kg max
-                         </span>
-                        </div>
-                      ))}
-                    </div>
+              return (
+                <div key={sessionIndex} className="history-card">
+                  <div className="history-card-header">
+                    <span className="history-date">{new Date(session.date).toLocaleDateString()}</span>
+                    <span className="history-duration">
+                      {session.sets.length > 0 ? `${session.sets.length} sets total` : '00:00:00'}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="empty-state">
-              <p>No workout history found.</p>
-              <p>Complete your first workout to see it here!</p>
-            </div>
-          )}
-        </div>
-      );
-    }
+
+                  <div className="history-exercises">
+                    {Object.values(exerciseGroups).map((exercise: { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }, exerciseIndex) => (
+                      <div key={exerciseIndex} className="history-exercise">
+                        <span className="history-exercise-name">{exercise.name}</span>
+                        <span className="history-exercise-stats">
+                          {exercise.sets.length} sets
+                          {!exercise.sets.some(set => set.isBackendData) && (
+                            <>
+                              • {exercise.totalReps} reps • {exercise.maxWeight}kg max
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <p>No workout history found.</p>
+            <p>Complete your first workout to see it here!</p>
+          </div>
+        )}
+      </div>
+    );
   };
 
     return (
