@@ -264,6 +264,50 @@ export default function App() {
     }
   };
 
+  // Handle exercise help (ExerciseDB API)
+  const handleExerciseHelp = async (exerciseName: string) => {
+    try {
+      const response = await fetch(`https://v1.exercisedb.dev/exercises/name/${encodeURIComponent(exerciseName)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.length > 0) {
+          const exercise = data[0];
+          const helpText = `Exercise: ${exercise.name}\nTarget: ${exercise.target}\nEquipment: ${exercise.equipment}\nInstructions: ${exercise.instructions || 'No instructions available'}`;
+          alert(helpText);
+        } else {
+          alert(`No information found for ${exerciseName}`);
+        }
+      } else {
+        alert(`Could not fetch exercise information for ${exerciseName}`);
+      }
+    } catch (error) {
+      console.error("Error fetching exercise help:", error);
+      alert(`Error fetching exercise information for ${exerciseName}`);
+    }
+  };
+
+  // Handle exercise options (edit/delete)
+  const handleExerciseOptions = (exerciseName: string) => {
+    const action = prompt(`Options for ${exerciseName}:\n1. Edit name\n2. Delete exercise\n\nEnter 1 or 2:`);
+
+    if (action === "1") {
+      const newName = prompt(`Enter new name for ${exerciseName}:`);
+      if (newName && newName.trim() && newName !== exerciseName) {
+        setExercises(prev => prev.map(ex => ex === exerciseName ? newName.trim() : ex));
+        // Also update workout sets if they exist
+        setWorkoutSets(prev => prev.map(set =>
+          set.exercise === exerciseName ? { ...set, exercise: newName.trim() } : set
+        ));
+      }
+    } else if (action === "2") {
+      if (confirm(`Are you sure you want to delete ${exerciseName}?`)) {
+        setExercises(prev => prev.filter(ex => ex !== exerciseName));
+        // Also remove workout sets for this exercise
+        setWorkoutSets(prev => prev.filter(set => set.exercise !== exerciseName));
+      }
+    }
+  };
+
   // Handle adding new set
   const handleAddSet = (exerciseName: string) => {
     setCurrentExercise(exerciseName);
@@ -500,8 +544,20 @@ export default function App() {
               <div className="exercise-header">
                 <h3 className="exercise-title">{exerciseName}</h3>
                 <div className="exercise-actions">
-                  <button className="exercise-action">?</button>
-                  <button className="exercise-action">⋮</button>
+                  <button
+                    className="exercise-action"
+                    onClick={() => handleExerciseHelp(exerciseName)}
+                    title="Get exercise help"
+                  >
+                    ?
+                  </button>
+                  <button
+                    className="exercise-action"
+                    onClick={() => handleExerciseOptions(exerciseName)}
+                    title="Exercise options"
+                  >
+                    ⋮
+                  </button>
                 </div>
               </div>
 
@@ -564,8 +620,20 @@ export default function App() {
               <div className="exercise-header">
                 <h3 className="exercise-title">{exerciseName}</h3>
                 <div className="exercise-actions">
-                  <button className="exercise-action">?</button>
-                  <button className="exercise-action">⋮</button>
+                  <button
+                    className="exercise-action"
+                    onClick={() => handleExerciseHelp(exerciseName)}
+                    title="Get exercise help"
+                  >
+                    ?
+                  </button>
+                  <button
+                    className="exercise-action"
+                    onClick={() => handleExerciseOptions(exerciseName)}
+                    title="Exercise options"
+                  >
+                    ⋮
+                  </button>
                 </div>
               </div>
 
