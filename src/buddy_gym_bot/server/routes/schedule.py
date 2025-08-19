@@ -4,6 +4,7 @@ Schedule API endpoints for workout plan modifications and trainer communication.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -11,6 +12,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from ...db import repo
+from ...services.openai_service import OpenAIService
 
 router = APIRouter()
 
@@ -35,10 +37,10 @@ class ScheduleResponse(BaseModel):
 @router.post("/schedule", response_model=ScheduleResponse)
 async def request_schedule_change(request: ScheduleRequest):
     """
-    Handle schedule change requests from users.
+    Handle schedule change requests from users using OpenAI for intelligent responses.
 
     This endpoint allows users to request modifications to their workout plan
-    by sending a message to their trainer or the system.
+    by sending a message to their trainer or the system, powered by AI.
     """
     try:
         # Ensure user exists
@@ -47,14 +49,77 @@ async def request_schedule_change(request: ScheduleRequest):
         logging.info(f"Schedule request from user {request.tg_user_id}: {request.message}")
         logging.info(f"Context provided: {bool(request.context)}")
 
-        # For now, this is a placeholder implementation
-        # In a real system, this would:
-        # 1. Store the request in a database
-        # 2. Notify the trainer via Telegram or email
-        # 3. Potentially use AI to suggest immediate modifications
-        # 4. Return an appropriate response
+        # Initialize OpenAI service
+        openai_service = OpenAIService()
 
-        # Analyze the request for common patterns
+        # Build comprehensive prompt for AI
+        ai_prompt = f"""You are an experienced fitness trainer and workout plan specialist. A user has sent you the following request about their workout plan:
+
+USER REQUEST: "{request.message}"
+
+CURRENT CONTEXT:
+"""
+
+        # Add context if available
+        if request.context:
+            if request.context.get('current_plan'):
+                plan = request.context['current_plan']
+                ai_prompt += f"""
+Current Workout Plan: {plan.get('program_name', 'Unnamed Plan')}
+- Duration: {plan.get('weeks', 'Unknown')} weeks
+- Frequency: {plan.get('days_per_week', 'Unknown')} days per week
+- Days scheduled: {len(plan.get('days', []))} days
+"""
+
+                # Add details about workout days
+                if plan.get('days'):
+                    ai_prompt += "\nWorkout Schedule:\n"
+                    for day in plan['days']:
+                        ai_prompt += f"- {day.get('weekday', 'Unknown')}: {day.get('focus', 'No focus specified')} ({day.get('time', 'No time set')})\n"
+                        if day.get('exercises'):
+                            ai_prompt += f"  Exercises: {len(day['exercises'])} exercises planned\n"
+
+            if request.context.get('workout_history'):
+                history = request.context['workout_history']
+                if history:
+                    ai_prompt += f"\nRecent Workout History: {len(history)} recent sessions"
+
+            if request.context.get('current_workout'):
+                current = request.context['current_workout']
+                if current.get('active'):
+                    ai_prompt += f"\nCurrent Workout: Active session with {len(current.get('sets', []))} sets completed"
+
+        ai_prompt += """
+
+Please provide a helpful, professional response as a fitness trainer. Consider:
+1. The user's specific request and needs
+2. Their current plan and progress
+3. Safety and proper progression principles
+4. Practical and actionable advice
+
+Be supportive, knowledgeable, and provide specific recommendations where appropriate. Keep your response conversational but professional, as if you're speaking directly to your client. Limit your response to 2-3 paragraphs maximum.
+"""
+
+        # Get AI response
+        if openai_service.is_available():
+            logging.info("Sending request to OpenAI for schedule advice")
+            ai_response = await openai_service.get_completion(ai_prompt, max_tokens=400)
+
+            if ai_response:
+                logging.info(f"OpenAI response received: {len(ai_response)} characters")
+
+                return ScheduleResponse(
+                    success=True,
+                    message="Schedule request processed successfully with AI assistance",
+                    response=ai_response,
+                    plan=None,  # TODO: Implement plan modifications based on AI suggestions
+                )
+            else:
+                logging.warning("OpenAI service returned no response, using fallback")
+        else:
+            logging.info("OpenAI service not available, using fallback response")
+
+        # Fallback to pattern-based responses if AI is unavailable
         message_lower = request.message.lower()
 
         # Generate contextual response based on request content
@@ -74,9 +139,6 @@ async def request_schedule_change(request: ScheduleRequest):
             response_message = "Great focus on cardiovascular fitness! I'll incorporate more conditioning work and adjust rest periods to improve your endurance."
         else:
             response_message = "Thanks for your feedback! I'll review your request and current progress to make the best adjustments to your plan. Expect updates within 24 hours."
-
-        # Store the request (in a real implementation)
-        # await repo.store_schedule_request(request.tg_user_id, request.message, request.context)
 
         return ScheduleResponse(
             success=True,

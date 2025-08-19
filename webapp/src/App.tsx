@@ -1423,13 +1423,6 @@ export default function App() {
       <div className="plan-content">
         <div className="plan-header">
           <h2 className="plan-title">Current Workout Plan</h2>
-          <button
-            className="plan-edit-button"
-            onClick={() => alert("Plan editing is now available! Click the edit buttons next to exercises and sets.")}
-            title="Plan editing enabled"
-          >
-            ✏️ Edit Plan
-          </button>
         </div>
 
         {currentPlan ? (
