@@ -76,6 +76,15 @@ export default function App() {
   const { t, i18n } = useTranslation();
   const user = useMemo(() => tgUser(), []);
 
+  // Detect if running in Main App mode (full screen) vs Mini App mode
+  const isMainApp = useMemo(() => {
+    try {
+      return window.Telegram?.WebApp?.platform !== 'ios' && window.Telegram?.WebApp?.platform !== 'android';
+    } catch {
+      return false;
+    }
+  }, []);
+
   // Tab state
   const [activeTab, setActiveTab] = useState<TabType>('workout');
 
@@ -106,6 +115,66 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Exercise help modal state
+  const [showExerciseModal, setShowExerciseModal] = useState(false);
+  const [exerciseModalData, setExerciseModalData] = useState<ExerciseDBData | null>(null);
+
+  // Save workout state to localStorage
+  const saveWorkoutState = useCallback(() => {
+    try {
+      const workoutState = {
+        workoutStartTime,
+        isWorkoutActive,
+        isPaused,
+        pausedTime,
+        workoutSets,
+        exercises,
+        timestamp: Date.now()
+      };
+      localStorage.setItem('workoutState', JSON.stringify(workoutState));
+      console.log('Workout state saved to localStorage');
+    } catch (error) {
+      console.error('Failed to save workout state:', error);
+    }
+  }, [workoutStartTime, isWorkoutActive, isPaused, pausedTime, workoutSets, exercises]);
+
+  // Load workout state from localStorage
+  const loadWorkoutState = useCallback(() => {
+    try {
+      const savedState = localStorage.getItem('workoutState');
+      if (savedState) {
+        const workoutState = JSON.parse(savedState);
+
+        // Check if the saved state is from today (within 24 hours)
+        const isToday = (Date.now() - workoutState.timestamp) < 24 * 60 * 60 * 1000;
+
+        if (isToday && workoutState.isWorkoutActive) {
+          // Restore workout state
+          setWorkoutStartTime(workoutState.workoutStartTime);
+          setIsWorkoutActive(workoutState.isWorkoutActive);
+          setIsPaused(workoutState.isPaused);
+          setPausedTime(workoutState.pausedTime);
+          setWorkoutSets(workoutState.workoutSets);
+          setExercises(workoutState.exercises);
+
+          console.log('Workout state restored from localStorage');
+
+          // Show notification that workout was restored
+          if (workoutState.workoutSets.length > 0) {
+            alert(`Welcome back! Your workout with ${workoutState.workoutSets.length} sets has been restored.`);
+          }
+        } else {
+          // Clear old workout state
+          localStorage.removeItem('workoutState');
+          console.log('Old workout state cleared');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load workout state:', error);
+      localStorage.removeItem('workoutState');
+    }
+  }, []);
+
   // Initialize app
   useEffect(() => {
     const lc = user?.language_code?.slice(0, 2) || "en";
@@ -118,7 +187,10 @@ export default function App() {
     // Load initial data
     fetchCurrentPlan();
     fetchWorkoutHistory();
-  }, [user, i18n]);
+
+    // Load saved workout state
+    loadWorkoutState();
+  }, [user, i18n, loadWorkoutState]);
 
   // Auto-populate workout with plan exercises when plan is loaded
   useEffect(() => {
@@ -130,14 +202,33 @@ export default function App() {
       ) || currentPlan.days[0]; // Fallback to first day if today not found
 
       if (todayWorkout && todayWorkout.exercises) {
-        // Extract unique exercise names from the plan
-        const planExercises = todayWorkout.exercises.map(ex => ex.name);
+        // Extract unique exercise names from the plan and clean them for API calls
+        const planExercises = todayWorkout.exercises.map(ex => {
+          // Keep original name for display, but also store cleaned version for API calls
+          const cleanedName = cleanExerciseName(ex.name);
+          console.log(`Exercise: "${ex.name}" -> cleaned: "${cleanedName}"`);
+          return ex.name; // Keep original name for display
+        });
         setExercises(planExercises);
 
         console.log("Auto-populated workout with plan exercises:", planExercises);
       }
     }
   }, [currentPlan]);
+
+  // Save workout state whenever it changes
+  useEffect(() => {
+    if (workoutSets.length > 0 || exercises.length > 0) {
+      saveWorkoutState();
+    }
+  }, [workoutSets, exercises, saveWorkoutState]);
+
+  // Save workout state when timer state changes
+  useEffect(() => {
+    if (isWorkoutActive) {
+      saveWorkoutState();
+    }
+  }, [isWorkoutActive, isPaused, pausedTime, saveWorkoutState]);
 
   // Fetch current workout plan
   const fetchCurrentPlan = async () => {
@@ -264,47 +355,227 @@ export default function App() {
     }
   };
 
+    // Clean exercise name for API search (keep equipment, just clean formatting)
+  const cleanExerciseName = (exerciseName: string): string => {
+    return exerciseName
+      .replace(/\([^)]*\)/g, '') // Remove parentheses content
+      .replace(/\s+/g, ' ') // Normalize multiple spaces
+      .trim();
+  };
+
+  // Define the exercise data type based on actual API response
+  interface ExerciseDBData {
+    exerciseId: string;
+    name: string;
+    gifUrl: string;
+    targetMuscles: string[];
+    bodyParts: string[];
+    equipments: string[];
+    secondaryMuscles: string[];
+    instructions: string[];
+  }
+
+  // Extract key components from exercise name for targeted searches
+  const extractExerciseComponents = (exerciseName: string) => {
+    const name = exerciseName.toLowerCase();
+
+    // Common equipment types
+    const equipment = name.includes('barbell') ? 'barbell' :
+                     name.includes('dumbbell') ? 'dumbbell' :
+                     name.includes('cable') ? 'cable' :
+                     name.includes('machine') ? 'machine' :
+                     name.includes('band') ? 'band' :
+                     name.includes('smith') ? 'smith machine' : null;
+
+    // Common body parts
+    const bodyPart = name.includes('bench') || name.includes('chest') ? 'chest' :
+                     name.includes('squat') || name.includes('leg') ? 'upper legs' :
+                     name.includes('deadlift') || name.includes('back') ? 'back' :
+                     name.includes('row') ? 'back' :
+                     name.includes('press') ? 'shoulders' :
+                     name.includes('curl') ? 'upper arms' : null;
+
+    // Common muscles
+    const muscle = name.includes('bench') ? 'pectorals' :
+                   name.includes('squat') ? 'quadriceps' :
+                   name.includes('deadlift') ? 'glutes' :
+                   name.includes('row') ? 'lats' :
+                   name.includes('press') ? 'deltoids' :
+                   name.includes('curl') ? 'biceps' : null;
+
+    return { equipment, bodyPart, muscle };
+  };
+
+  // Helper function to search exercises by general query
+  const searchExercises = async (query: string): Promise<ExerciseDBData | null> => {
+    try {
+      const response = await fetch(`https://www.exercisedb.dev/api/v1/exercises/search?q=${encodeURIComponent(query)}&limit=10`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.success && data.data && data.data.length > 0) {
+          return data.data[0];
+        }
+      }
+    } catch (error) {
+      console.log(`Search failed for "${query}":`, error);
+    }
+    return null;
+  };
+
+  // Helper function to search by equipment
+  const searchByEquipment = async (equipment: string, exerciseName: string): Promise<ExerciseDBData | null> => {
+    try {
+      const response = await fetch(`https://www.exercisedb.dev/api/v1/equipments/${encodeURIComponent(equipment)}/exercises`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.success && data.data && data.data.length > 0) {
+          // Find best match from equipment-specific results
+          const bestMatch = data.data.find((ex: ExerciseDBData) =>
+            ex.name.toLowerCase().includes(exerciseName.toLowerCase()) ||
+            exerciseName.toLowerCase().includes(ex.name.toLowerCase())
+          );
+          return bestMatch || data.data[0];
+        }
+      }
+    } catch (error) {
+      console.log(`Equipment search failed for "${equipment}":`, error);
+    }
+    return null;
+  };
+
+  // Helper function to search by body part
+  const searchByBodyPart = async (bodyPart: string, exerciseName: string): Promise<ExerciseDBData | null> => {
+    try {
+      const response = await fetch(`https://www.exercisedb.dev/api/v1/bodyparts/${encodeURIComponent(bodyPart)}/exercises`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.success && data.data && data.data.length > 0) {
+          // Find best match from body part results
+          const bestMatch = data.data.find((ex: ExerciseDBData) =>
+            ex.name.toLowerCase().includes(exerciseName.toLowerCase()) ||
+            exerciseName.toLowerCase().includes(ex.name.toLowerCase())
+          );
+          return bestMatch || data.data[0];
+        }
+      }
+    } catch (error) {
+      console.log(`Body part search failed for "${bodyPart}":`, error);
+    }
+    return null;
+  };
+
+  // Helper function to search by muscle
+  const searchByMuscle = async (muscle: string, exerciseName: string): Promise<ExerciseDBData | null> => {
+    try {
+      const response = await fetch(`https://www.exercisedb.dev/api/v1/muscles/${encodeURIComponent(muscle)}/exercises`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.success && data.data && data.data.length > 0) {
+          // Find best match from muscle results
+          const bestMatch = data.data.find((ex: ExerciseDBData) =>
+            ex.name.toLowerCase().includes(exerciseName.toLowerCase()) ||
+            exerciseName.toLowerCase().includes(ex.name.toLowerCase())
+          );
+          return bestMatch || data.data[0];
+        }
+      }
+    } catch (error) {
+      console.log(`Muscle search failed for "${muscle}":`, error);
+    }
+    return null;
+  };
+
   // Handle exercise help (ExerciseDB API)
   const handleExerciseHelp = async (exerciseName: string) => {
     try {
-      const response = await fetch(`https://v1.exercisedb.dev/exercises/name/${encodeURIComponent(exerciseName)}`);
+
+      // Clean the exercise name for better search (keep equipment info)
+      const cleanedName = cleanExerciseName(exerciseName);
+      console.log(`Searching for exercise: "${exerciseName}" (cleaned: "${cleanedName}")`);
+
+      // Use the correct ExerciseDB search API
+      const searchEndpoint = `https://www.exercisedb.dev/api/v1/exercises/search?q=${encodeURIComponent(cleanedName)}&limit=10`;
+
+      const response = await fetch(searchEndpoint, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+        mode: 'cors'
+      });
+
       if (response.ok) {
-        const data = await response.json();
-        if (data && data.length > 0) {
-          const exercise = data[0];
-          const helpText = `Exercise: ${exercise.name}\nTarget: ${exercise.target}\nEquipment: ${exercise.equipment}\nInstructions: ${exercise.instructions || 'No instructions available'}`;
-          alert(helpText);
+                const data = await response.json();
+        console.log(`Search results for "${cleanedName}":`, data);
+
+        if (data && data.success && data.data && data.data.length > 0) {
+          // Find the best match from the search results
+          let bestMatch = data.data[0];
+
+          // Try to find exact match first
+          const exactMatch = data.data.find((ex: ExerciseDBData) =>
+            ex.name.toLowerCase().includes(cleanedName.toLowerCase()) ||
+            cleanedName.toLowerCase().includes(ex.name.toLowerCase())
+          );
+
+          if (exactMatch) {
+            bestMatch = exactMatch;
+          }
+
+          // Use the correct field names from the API response
+                    // Show exercise data in modal with GIF
+          setExerciseModalData(bestMatch);
+          setShowExerciseModal(true);
         } else {
-          alert(`No information found for ${exerciseName}`);
+          // Try with just the first word as fallback
+          const firstWord = cleanedName.split(' ')[0];
+          if (firstWord.length > 2) {
+            console.log(`Trying fallback search with first word: "${firstWord}"`);
+            const fallbackResponse = await fetch(`https://www.exercisedb.dev/api/v1/exercises/search?q=${encodeURIComponent(firstWord)}&limit=5`);
+
+            if (fallbackResponse.ok) {
+              const fallbackData = await fallbackResponse.json();
+              if (fallbackData && fallbackData.success && fallbackData.data && fallbackData.data.length > 0) {
+                                const fallbackExercise = fallbackData.data[0];
+                // Show fallback exercise in modal with GIF
+                setExerciseModalData(fallbackExercise);
+                setShowExerciseModal(true);
+                return;
+              }
+            }
+          }
+
+          // No data found
+          alert(`No detailed information found for "${exerciseName}".\n\nThis exercise might be:\n• A custom exercise\n• Named differently in our database\n• A compound movement\n\nYou can search online for proper form and technique.`);
         }
       } else {
-        alert(`Could not fetch exercise information for ${exerciseName}`);
+        console.error(`API response not ok: ${response.status} ${response.statusText}`);
+        alert(`Could not fetch exercise information for ${exerciseName}.\n\nAPI returned: ${response.status} ${response.statusText}`);
       }
     } catch (error) {
       console.error("Error fetching exercise help:", error);
-      alert(`Error fetching exercise information for ${exerciseName}`);
+      alert(`Could not fetch exercise information for ${exerciseName}.\n\nPlease check your internet connection or try again later.`);
     }
   };
 
-  // Handle exercise options (edit/delete)
-  const handleExerciseOptions = (exerciseName: string) => {
-    const action = prompt(`Options for ${exerciseName}:\n1. Edit name\n2. Delete exercise\n\nEnter 1 or 2:`);
+  // Handle exercise name editing (when clicking on exercise title)
+  const handleExerciseNameEdit = (exerciseName: string) => {
+    const newName = prompt(`Enter new name for "${exerciseName}":`);
+    if (newName && newName.trim() && newName !== exerciseName) {
+      setExercises(prev => prev.map(ex => ex === exerciseName ? newName.trim() : ex));
+      // Also update workout sets if they exist
+      setWorkoutSets(prev => prev.map(set =>
+        set.exercise === exerciseName ? { ...set, exercise: newName.trim() } : set
+      ));
+    }
+  };
 
-    if (action === "1") {
-      const newName = prompt(`Enter new name for ${exerciseName}:`);
-      if (newName && newName.trim() && newName !== exerciseName) {
-        setExercises(prev => prev.map(ex => ex === exerciseName ? newName.trim() : ex));
-        // Also update workout sets if they exist
-        setWorkoutSets(prev => prev.map(set =>
-          set.exercise === exerciseName ? { ...set, exercise: newName.trim() } : set
-        ));
-      }
-    } else if (action === "2") {
-      if (confirm(`Are you sure you want to delete ${exerciseName}?`)) {
-        setExercises(prev => prev.filter(ex => ex !== exerciseName));
-        // Also remove workout sets for this exercise
-        setWorkoutSets(prev => prev.filter(set => set.exercise !== exerciseName));
-      }
+  // Handle exercise deletion (when clicking on delete button)
+  const handleExerciseDelete = (exerciseName: string) => {
+    if (confirm(`Are you sure you want to delete "${exerciseName}"?`)) {
+      setExercises(prev => prev.filter(ex => ex !== exerciseName));
+      // Also remove workout sets for this exercise
+      setWorkoutSets(prev => prev.filter(set => set.exercise !== exerciseName));
     }
   };
 
@@ -468,6 +739,11 @@ export default function App() {
 
         if (response.ok) {
           console.log("Workout finished and saved to API");
+
+          // Clear workout state from localStorage since workout is complete
+          localStorage.removeItem('workoutState');
+          console.log('Workout state cleared from localStorage');
+
           // Show success message
           try {
             window.Telegram?.WebApp?.showPopup({
@@ -542,7 +818,13 @@ export default function App() {
           return (
             <div key={exerciseName} className="exercise-card">
               <div className="exercise-header">
-                <h3 className="exercise-title">{exerciseName}</h3>
+                <h3
+                  className="exercise-title exercise-title--clickable"
+                  onClick={() => handleExerciseNameEdit(exerciseName)}
+                  title="Click to rename exercise"
+                >
+                  {exerciseName}
+                </h3>
                 <div className="exercise-actions">
                   <button
                     className="exercise-action"
@@ -552,11 +834,11 @@ export default function App() {
                     ?
                   </button>
                   <button
-                    className="exercise-action"
-                    onClick={() => handleExerciseOptions(exerciseName)}
-                    title="Exercise options"
+                    className="exercise-action exercise-action--delete"
+                    onClick={() => handleExerciseDelete(exerciseName)}
+                    title="Delete exercise"
                   >
-                    ⋮
+                    ×
                   </button>
                 </div>
               </div>
@@ -564,9 +846,16 @@ export default function App() {
               {/* Show plan info if available */}
               {planExercise && (
                 <div className="exercise-plan-info">
-                  <span className="plan-target">{planExercise.target}</span>
-                  {planExercise.sets && (
-                    <span className="plan-sets">Planned: {planExercise.sets.length} sets</span>
+                  {planExercise.sets && planExercise.sets.length > 0 && (
+                    <div className="plan-details">
+                      {planExercise.sets.map((set, index) => (
+                        <span key={index} className="plan-detail">
+                          {set.reps && `${set.reps} reps`}
+                          {set.rest_sec && set.reps && ' • '}
+                          {set.rest_sec && `${set.rest_sec}s rest`}
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}
@@ -618,7 +907,13 @@ export default function App() {
           return (
             <div key={exerciseName} className="exercise-card">
               <div className="exercise-header">
-                <h3 className="exercise-title">{exerciseName}</h3>
+                <h3
+                  className="exercise-title exercise-title--clickable"
+                  onClick={() => handleExerciseNameEdit(exerciseName)}
+                  title="Click to rename exercise"
+                >
+                  {exerciseName}
+                </h3>
                 <div className="exercise-actions">
                   <button
                     className="exercise-action"
@@ -628,11 +923,11 @@ export default function App() {
                     ?
                   </button>
                   <button
-                    className="exercise-action"
-                    onClick={() => handleExerciseOptions(exerciseName)}
-                    title="Exercise options"
+                    className="exercise-action exercise-action--delete"
+                    onClick={() => handleExerciseDelete(exerciseName)}
+                    title="Delete exercise"
                   >
-                    ⋮
+                    ×
                   </button>
                 </div>
               </div>
@@ -640,9 +935,16 @@ export default function App() {
               {/* Show plan info if available */}
               {planExercise && (
                 <div className="exercise-plan-info">
-                  <span className="plan-target">{planExercise.target}</span>
-                  {planExercise.sets && (
-                    <span className="plan-sets">Planned: {planExercise.sets.length} sets</span>
+                  {planExercise.sets && planExercise.sets.length > 0 && (
+                    <div className="plan-details">
+                      {planExercise.sets.map((set, index) => (
+                        <span key={index} className="plan-detail">
+                          {set.reps && `${set.reps} reps`}
+                          {set.rest_sec && set.reps && ' • '}
+                          {set.rest_sec && `${set.rest_sec}s rest`}
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}
@@ -814,45 +1116,90 @@ export default function App() {
   };
 
   // Render history/statistics content
-  const renderHistory = () => (
-    <div className="history-content">
-      <div className="history-header">
-        <h2 className="history-title">Workout History</h2>
-      </div>
+  const renderHistory = () => {
+    // Group workout sets by date to create workout sessions
+    const workoutSessions = workoutSets.reduce((sessions, set) => {
+      const today = new Date().toDateString();
+      const setDate = new Date().toDateString(); // For now, group all sets as today's workout
 
-      {workoutHistory.length > 0 ? (
-        <div className="history-list">
-          {workoutHistory.map((workout) => (
-            <div key={workout.id} className="history-card">
-              <div className="history-card-header">
-                <span className="history-date">{new Date(workout.date).toLocaleDateString()}</span>
-                <span className="history-duration">{formatTime(workout.duration)}</span>
-              </div>
+      if (!sessions[today]) {
+        sessions[today] = {
+          date: today,
+          sets: [],
+          totalDuration: 0
+        };
+      }
 
-              <div className="history-exercises">
-                {workout.exercises.map((exercise, index) => (
-                  <div key={index} className="history-exercise">
-                    <span className="history-exercise-name">{exercise.name}</span>
-                    <span className="history-exercise-stats">
-                      {exercise.sets} sets • {exercise.totalReps} reps • {exercise.maxWeight}kg max
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="empty-state">
-          <p>No workout history found.</p>
-          <p>Complete your first workout to see it here!</p>
-        </div>
-      )}
-    </div>
-  );
+      sessions[today].sets.push(set);
+      return sessions;
+    }, {} as Record<string, { date: string; sets: any[]; totalDuration: number }>);
+
+    // Convert to array and sort by date (newest first)
+    const sortedSessions = Object.values(workoutSessions)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return (
-    <div className={`workout-app ${showKeypad ? 'keypad-active' : ''}`}>
+      <div className="history-content">
+        <div className="history-header">
+          <h2 className="history-title">Workout History</h2>
+        </div>
+
+        {sortedSessions.length > 0 ? (
+          <div className="history-list">
+            {sortedSessions.map((session, sessionIndex) => {
+              // Group sets by exercise within this session
+              const exerciseGroups: Record<string, { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }> = {};
+
+              session.sets.forEach(set => {
+                if (!exerciseGroups[set.exercise]) {
+                  exerciseGroups[set.exercise] = {
+                    name: set.exercise,
+                    sets: [],
+                    totalReps: 0,
+                    maxWeight: 0
+                  };
+                }
+
+                exerciseGroups[set.exercise].sets.push(set);
+                exerciseGroups[set.exercise].totalReps += set.reps;
+                exerciseGroups[set.exercise].maxWeight = Math.max(exerciseGroups[set.exercise].maxWeight, set.weight);
+              });
+
+              return (
+                <div key={sessionIndex} className="history-card">
+                  <div className="history-card-header">
+                    <span className="history-date">{new Date(session.date).toLocaleDateString()}</span>
+                    <span className="history-duration">
+                      {session.sets.length > 0 ? `${session.sets.length} sets total` : '00:00:00'}
+                    </span>
+                  </div>
+
+                  <div className="history-exercises">
+                    {Object.values(exerciseGroups).map((exercise: { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }, exerciseIndex) => (
+                      <div key={exerciseIndex} className="history-exercise">
+                        <span className="history-exercise-name">{exercise.name}</span>
+                        <span className="history-exercise-stats">
+                          {exercise.sets.length} sets • {exercise.totalReps} reps • {exercise.maxWeight}kg max
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <p>No workout history found.</p>
+            <p>Complete your first workout to see it here!</p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+    return (
+    <div className={`workout-app ${showKeypad ? 'keypad-active' : ''} ${isMainApp ? 'main-app' : ''}`}>
       {/* Tab Content */}
       {activeTab === 'workout' && renderWorkoutTracker()}
       {activeTab === 'plan' && renderCurrentPlan()}
@@ -888,6 +1235,72 @@ export default function App() {
         >
           History
         </button>
+        </div>
+      )}
+
+      {/* Exercise Help Modal */}
+      {showExerciseModal && exerciseModalData && (
+        <div className="exercise-modal-overlay" onClick={() => setShowExerciseModal(false)}>
+          <div className="exercise-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="exercise-modal-header">
+              <h3 className="exercise-modal-title">{exerciseModalData.name}</h3>
+              <button
+                className="exercise-modal-close"
+                onClick={() => setShowExerciseModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="exercise-modal-content">
+              {/* Exercise GIF */}
+              {exerciseModalData.gifUrl && (
+                <div className="exercise-gif-container">
+                  <img
+                    src={exerciseModalData.gifUrl}
+                    alt={exerciseModalData.name}
+                    className="exercise-gif"
+                  />
+                </div>
+              )}
+
+              {/* Exercise Details */}
+              <div className="exercise-details">
+                <div className="exercise-detail-row">
+                  <span className="exercise-detail-label">Target:</span>
+                  <span className="exercise-detail-value">{exerciseModalData.targetMuscles?.join(', ') || 'N/A'}</span>
+                </div>
+                <div className="exercise-detail-row">
+                  <span className="exercise-detail-label">Body Part:</span>
+                  <span className="exercise-detail-value">{exerciseModalData.bodyParts?.join(', ') || 'N/A'}</span>
+                </div>
+                <div className="exercise-detail-row">
+                  <span className="exercise-detail-label">Equipment:</span>
+                  <span className="exercise-detail-value">{exerciseModalData.equipments?.join(', ') || 'N/A'}</span>
+                </div>
+                {exerciseModalData.secondaryMuscles && exerciseModalData.secondaryMuscles.length > 0 && (
+                  <div className="exercise-detail-row">
+                    <span className="exercise-detail-label">Secondary:</span>
+                    <span className="exercise-detail-value">{exerciseModalData.secondaryMuscles.join(', ')}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Instructions */}
+              {exerciseModalData.instructions && exerciseModalData.instructions.length > 0 && (
+                <div className="exercise-instructions">
+                  <h4 className="instructions-title">Instructions:</h4>
+                  <ol className="instructions-list">
+                    {exerciseModalData.instructions.map((instruction, index) => (
+                      <li key={index} className="instruction-item">
+                        {instruction.replace(/^Step:\d+\s*/, '')}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
