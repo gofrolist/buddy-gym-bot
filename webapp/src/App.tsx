@@ -560,7 +560,7 @@ export default function App() {
 
   // Handle exercise name editing (when clicking on exercise title)
   const handleExerciseNameEdit = (exerciseName: string) => {
-    const newName = prompt(`Enter new name for "${exerciseName}":`);
+    const newName = prompt(`Enter new name for "${exerciseName}":`, exerciseName);
     if (newName && newName.trim() && newName !== exerciseName) {
       setExercises(prev => prev.map(ex => ex === exerciseName ? newName.trim() : ex));
       // Also update workout sets if they exist
@@ -581,12 +581,20 @@ export default function App() {
 
   // Handle adding new set
   const handleAddSet = (exerciseName: string) => {
+    // Store current scroll position before opening input
+    const currentScrollY = window.scrollY;
+
     setCurrentExercise(exerciseName);
     setCurrentWeight("");
     setCurrentReps("");
     setCurrentRPE("");
     setInputMode("weight");
     setShowKeypad(true);
+
+    // Restore scroll position after a short delay to ensure UI has updated
+    setTimeout(() => {
+      window.scrollTo(0, currentScrollY);
+    }, 100);
   };
 
   // Handle editing set
@@ -653,6 +661,14 @@ export default function App() {
       setCurrentReps("");
       setCurrentRPE("");
       setInputMode("weight");
+
+      // Restore scroll position to where user was before opening input
+      // This helps maintain focus on the workout progress
+      setTimeout(() => {
+        if (window.scrollY > 0) {
+          window.scrollTo(0, Math.max(0, window.scrollY - 150));
+        }
+      }, 100);
     } else {
       console.log("Missing values:", { currentWeight, currentReps, currentRPE });
       // If we have weight but no reps, switch to reps input
@@ -967,7 +983,7 @@ export default function App() {
 
       {/* Input Section */}
       {showKeypad && (
-        <div className="input-section">
+        <div className="input-section" id="input-section">
           <div className="input-header">
             <div className="input-fields">
               <div className={`input-field ${inputMode === "weight" ? "input-field--active" : ""}`}>
@@ -982,6 +998,13 @@ export default function App() {
                   min="0"
                   step="0.5"
                   autoFocus={inputMode === "weight"}
+                  onFocus={() => {
+                    // Smooth scroll to input section when focused
+                    const inputSection = document.getElementById('input-section');
+                    if (inputSection) {
+                      inputSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                  }}
                 />
                 <span className="weight-input__unit">kg</span>
               </div>
@@ -997,6 +1020,13 @@ export default function App() {
                   min="1"
                   step="1"
                   autoFocus={inputMode === "reps"}
+                  onFocus={() => {
+                    // Smooth scroll to input section when focused
+                    const inputSection = document.getElementById('input-section');
+                    if (inputSection) {
+                      inputSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                  }}
                 />
                 <span className="weight-input__unit">reps</span>
               </div>
@@ -1034,7 +1064,13 @@ export default function App() {
             </div>
 
             <div className="input-actions">
-              <button className="cancel-button" onClick={() => setShowKeypad(false)}>
+              <button className="cancel-button" onClick={() => {
+                setShowKeypad(false);
+                // Restore scroll position to where user was before opening input
+                if (window.scrollY > 0) {
+                  window.scrollTo(0, Math.max(0, window.scrollY - 100));
+                }
+              }}>
                 Cancel
               </button>
               <button className="done-button" onClick={handleDone}>
@@ -1115,87 +1151,124 @@ export default function App() {
     );
   };
 
-  // Render history/statistics content
+    // Render history/statistics content
   const renderHistory = () => {
-    // Group workout sets by date to create workout sessions
-    const workoutSessions = workoutSets.reduce((sessions, set) => {
-      const today = new Date().toDateString();
-      const setDate = new Date().toDateString(); // For now, group all sets as today's workout
+    // Use actual workout history from backend if available, otherwise show current workout sets
+    const hasBackendHistory = workoutHistory.length > 0;
 
-      if (!sessions[today]) {
-        sessions[today] = {
-          date: today,
-          sets: [],
-          totalDuration: 0
-        };
-      }
+    if (hasBackendHistory) {
+      // Display backend workout history
+      return (
+        <div className="history-content">
+          <div className="history-header">
+            <h2 className="history-title">Workout History</h2>
+          </div>
 
-      sessions[today].sets.push(set);
-      return sessions;
-    }, {} as Record<string, { date: string; sets: any[]; totalDuration: number }>);
-
-    // Convert to array and sort by date (newest first)
-    const sortedSessions = Object.values(workoutSessions)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    return (
-      <div className="history-content">
-        <div className="history-header">
-          <h2 className="history-title">Workout History</h2>
-        </div>
-
-        {sortedSessions.length > 0 ? (
           <div className="history-list">
-            {sortedSessions.map((session, sessionIndex) => {
-              // Group sets by exercise within this session
-              const exerciseGroups: Record<string, { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }> = {};
-
-              session.sets.forEach(set => {
-                if (!exerciseGroups[set.exercise]) {
-                  exerciseGroups[set.exercise] = {
-                    name: set.exercise,
-                    sets: [],
-                    totalReps: 0,
-                    maxWeight: 0
-                  };
-                }
-
-                exerciseGroups[set.exercise].sets.push(set);
-                exerciseGroups[set.exercise].totalReps += set.reps;
-                exerciseGroups[set.exercise].maxWeight = Math.max(exerciseGroups[set.exercise].maxWeight, set.weight);
-              });
-
-              return (
-                <div key={sessionIndex} className="history-card">
-                  <div className="history-card-header">
-                    <span className="history-date">{new Date(session.date).toLocaleDateString()}</span>
-                    <span className="history-duration">
-                      {session.sets.length > 0 ? `${session.sets.length} sets total` : '00:00:00'}
-                    </span>
-                  </div>
-
-                  <div className="history-exercises">
-                    {Object.values(exerciseGroups).map((exercise: { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }, exerciseIndex) => (
-                      <div key={exerciseIndex} className="history-exercise">
-                        <span className="history-exercise-name">{exercise.name}</span>
-                        <span className="history-exercise-stats">
-                          {exercise.sets.length} sets • {exercise.totalReps} reps • {exercise.maxWeight}kg max
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+            {workoutHistory.map((workout) => (
+              <div key={workout.id} className="history-card">
+                <div className="history-card-header">
+                  <span className="history-date">{new Date(workout.date).toLocaleDateString()}</span>
+                  <span className="history-duration">
+                    {workout.exercises.reduce((total, ex) => total + ex.sets, 0)} sets total
+                  </span>
                 </div>
-              );
-            })}
+
+                <div className="history-exercises">
+                  {workout.exercises.map((exercise, index) => (
+                    <div key={index} className="history-exercise">
+                      <span className="history-exercise-name">{exercise.name}</span>
+                      <span className="history-exercise-stats">
+                        {exercise.sets} sets • {exercise.totalReps} reps • {exercise.maxWeight}kg max
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
-        ) : (
-          <div className="empty-state">
-            <p>No workout history found.</p>
-            <p>Complete your first workout to see it here!</p>
+        </div>
+      );
+    } else {
+      // Fallback: Show current workout sets grouped by date
+      const workoutSessions = workoutSets.reduce((sessions, set) => {
+        const today = new Date().toDateString();
+
+        if (!sessions[today]) {
+          sessions[today] = {
+            date: today,
+            sets: [],
+            totalDuration: 0
+          };
+        }
+
+        sessions[today].sets.push(set);
+        return sessions;
+      }, {} as Record<string, { date: string; sets: WorkoutSet[]; totalDuration: number }>);
+
+      // Convert to array and sort by date (newest first)
+      const sortedSessions = Object.values(workoutSessions)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      return (
+        <div className="history-content">
+          <div className="history-header">
+            <h2 className="history-title">Workout History</h2>
           </div>
-        )}
-      </div>
-    );
+
+          {sortedSessions.length > 0 ? (
+            <div className="history-list">
+              {sortedSessions.map((session, sessionIndex) => {
+                // Group sets by exercise within this session
+                const exerciseGroups: Record<string, { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }> = {};
+
+                session.sets.forEach(set => {
+                  if (!exerciseGroups[set.exercise]) {
+                    exerciseGroups[set.exercise] = {
+                      name: set.exercise,
+                      sets: [],
+                      totalReps: 0,
+                      maxWeight: 0
+                    };
+                  }
+
+                  exerciseGroups[set.exercise].sets.push(set);
+                  exerciseGroups[set.exercise].totalReps += set.reps;
+                  exerciseGroups[set.exercise].maxWeight = Math.max(exerciseGroups[set.exercise].maxWeight, set.weight);
+                });
+
+                return (
+                  <div key={sessionIndex} className="history-card">
+                    <div className="history-card-header">
+                      <span className="history-date">{new Date(session.date).toLocaleDateString()}</span>
+                      <span className="history-duration">
+                        {session.sets.length > 0 ? `${session.sets.length} sets total` : '00:00:00'}
+                      </span>
+                    </div>
+
+                    <div className="history-exercises">
+                      {Object.values(exerciseGroups).map((exercise: { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }, exerciseIndex) => (
+                        <div key={exerciseIndex} className="history-exercise">
+                          <span className="history-exercise-name">{exercise.name}</span>
+                                                   <span className="history-exercise-stats">
+                           {exercise.sets.length} sets • {exercise.totalReps} reps • {exercise.maxWeight}kg max
+                         </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <p>No workout history found.</p>
+              <p>Complete your first workout to see it here!</p>
+            </div>
+          )}
+        </div>
+      );
+    }
   };
 
     return (

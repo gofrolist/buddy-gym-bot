@@ -557,6 +557,10 @@ body {
   border-top: 1px solid #333;
   z-index: 1000;
   animation: slideUp 0.3s ease-out;
+  /* Better scroll behavior */
+  scroll-behavior: smooth;
+  /* Prevent body scroll when input is open */
+  overscroll-behavior: contain;
 }
 
 @keyframes slideUp {
