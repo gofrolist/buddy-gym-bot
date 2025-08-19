@@ -65,6 +65,53 @@ interface WorkoutHistory {
 
 type TabType = 'workout' | 'plan' | 'history';
 
+// Unit system types
+type UnitSystem = 'metric' | 'imperial';
+
+// Function to detect user's preferred unit system
+function detectUnitSystem(): UnitSystem {
+  try {
+    // Method 1: Check locale (most reliable)
+    const locale = navigator.language || navigator.languages?.[0] || 'en-US';
+    const country = locale.split('-')[1]?.toUpperCase();
+
+    // Countries that typically use imperial units
+    const imperialCountries = ['US', 'GB', 'CA', 'AU', 'NZ', 'IE'];
+
+    if (country && imperialCountries.includes(country)) {
+      return 'imperial';
+    }
+
+    // Method 2: Check if locale contains imperial indicators
+    if (locale.toLowerCase().includes('en-us') || locale.toLowerCase().includes('en-gb')) {
+      return 'imperial';
+    }
+
+    // Method 3: Check device language
+    const deviceLang = navigator.language?.toLowerCase() || '';
+    if (deviceLang.startsWith('en')) {
+      // Default to imperial for English speakers (most are US/UK)
+      return 'imperial';
+    }
+
+    // Default to metric for most other locales
+    return 'metric';
+  } catch {
+    // Fallback to imperial (US default)
+    return 'imperial';
+  }
+}
+
+// Function to convert kg to lbs
+function kgToLbs(kg: number): number {
+  return Math.round(kg * 2.20462 * 10) / 10; // Round to 1 decimal place
+}
+
+// Function to convert lbs to kg
+function lbsToKg(lbs: number): number {
+  return Math.round(lbs * 0.453592 * 10) / 10; // Round to 1 decimal place
+}
+
 function tgUser() {
   try {
     return window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -110,6 +157,9 @@ export default function App() {
   // Plan and history data
   const [currentPlan, setCurrentPlan] = useState<WorkoutPlan | null>(null);
   const [workoutHistory, setWorkoutHistory] = useState<WorkoutHistory[]>([]);
+
+  // Unit system state
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>(() => detectUnitSystem());
 
   // UI state
   const [suggestions, setSuggestions] = useState<Exercise[]>([]);
@@ -1048,6 +1098,47 @@ export default function App() {
     return setIndex + 1;
   };
 
+  // Format weight display with correct unit
+  const formatWeight = (weightKg: number): string => {
+    if (unitSystem === 'imperial') {
+      const lbs = kgToLbs(weightKg);
+      return `${lbs} lbs`;
+    }
+    return `${weightKg} kg`;
+  };
+
+  // Get weight input value in the correct unit
+  const getWeightInputValue = (): string => {
+    if (!currentWeight) return '';
+
+    const weightKg = parseFloat(currentWeight);
+    if (isNaN(weightKg)) return currentWeight;
+
+    if (unitSystem === 'imperial') {
+      return kgToLbs(weightKg).toString();
+    }
+    return weightKg.toString();
+  };
+
+  // Handle weight input change with unit conversion
+  const handleWeightInputChange = (value: string) => {
+    if (!value) {
+      setCurrentWeight('');
+      return;
+    }
+
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) return;
+
+    if (unitSystem === 'imperial') {
+      // Convert lbs to kg for storage
+      const kgValue = lbsToKg(numValue);
+      setCurrentWeight(kgValue.toString());
+    } else {
+      setCurrentWeight(value);
+    }
+  };
+
     // Render workout tracker content
   const renderWorkoutTracker = () => (
     <>
@@ -1061,8 +1152,14 @@ export default function App() {
           <button className="workout-control" onClick={handlePauseResume}>
             <span className="workout-control__icon">{isPaused ? '▶' : '⏸'}</span>
           </button>
-          <button className="workout-control">
-            <span className="workout-control__icon">⚙</span>
+          <button
+            className="workout-control workout-control--unit"
+            onClick={() => setUnitSystem(prev => prev === 'metric' ? 'imperial' : 'metric')}
+            title={`Switch to ${unitSystem === 'metric' ? 'lbs' : 'kg'}`}
+          >
+            <span className="workout-control__icon">
+              {unitSystem === 'metric' ? '🇺🇸' : '🌍'}
+            </span>
           </button>
           <button className="workout-control workout-control--finish" onClick={handleFinishWorkout}>
             <span className="workout-control__icon">🏁</span>
@@ -1143,7 +1240,7 @@ export default function App() {
                         </div>
                       </div>
                       <div className="sets-table-cell sets-table-cell--weight">
-                        {set.weight} kg
+                        {formatWeight(set.weight)}
                       </div>
                       <div className="sets-table-cell sets-table-cell--reps">
                         {set.reps}
@@ -1157,11 +1254,11 @@ export default function App() {
                           ✏️
                         </button>
                         <button
-                          className="set-action-button set-action-button--complete"
+                          className={`set-action-button set-action-button--complete ${set.isCompleted ? 'completed' : ''}`}
                           onClick={() => handleCompleteSet(set.id)}
-                          title={set.isCompleted ? "Mark incomplete" : "Mark complete"}
+                          title={set.isCompleted ? "Set completed" : "Mark set as complete"}
                         >
-                          {set.isCompleted ? "✓" : "○"}
+                          {set.isCompleted ? '✓' : '○'}
                         </button>
                       </div>
                     </div>
@@ -1254,16 +1351,16 @@ export default function App() {
               <div className={`input-field ${inputMode === "weight" ? "input-field--active" : ""}`}>
                 <label className="input-label">Weight</label>
                 <input
-                type="number"
+                  type="number"
                   inputMode="numeric"
-                  value={currentWeight}
-                  onChange={(e) => setCurrentWeight(e.target.value)}
+                  value={getWeightInputValue()}
+                  onChange={(e) => handleWeightInputChange(e.target.value)}
                   className="weight-input__field"
                   placeholder="0"
                   min="0"
-                  step="0.5"
+                  step={unitSystem === 'imperial' ? "1" : "0.5"}
                   autoFocus={inputMode === "weight"}
-                  onFocus={() => {
+                  onFocus={(e) => {
                     // Smooth scroll to input section when focused
                     const inputSection = document.getElementById('input-section');
                     if (inputSection) {
@@ -1275,8 +1372,10 @@ export default function App() {
                     }, 100);
                   }}
                 />
-                <span className="weight-input__unit">kg</span>
-            </div>
+                <span className="weight-input__unit">
+                  {unitSystem === 'imperial' ? 'lbs' : 'kg'}
+                </span>
+              </div>
               <div className={`input-field ${inputMode === "reps" ? "input-field--active" : ""}`}>
                 <label className="input-label">Reps</label>
                 <input
@@ -1289,7 +1388,7 @@ export default function App() {
                   min="1"
                   step="1"
                   autoFocus={inputMode === "reps"}
-                  onFocus={() => {
+                  onFocus={(e) => {
                     // Smooth scroll to input section when focused
                     const inputSection = document.getElementById('input-section');
                     if (inputSection) {
@@ -1332,58 +1431,6 @@ export default function App() {
             ✏️ Edit Plan
           </button>
         </div>
-
-        {/* Schedule Request Section */}
-        <div className="schedule-request-section">
-          <div className="schedule-request-header">
-            <h3 className="schedule-request-title">Request Plan Changes</h3>
-            <p className="schedule-request-description">
-              Ask your trainer to modify your workout plan, add exercises, or adjust training parameters.
-            </p>
-          </div>
-
-          <div className="schedule-request-form">
-            <textarea
-              className="schedule-request-input"
-              value={scheduleRequest}
-              onChange={(e) => setScheduleRequest(e.target.value)}
-              placeholder="e.g., 'Can we add more chest exercises on Monday?' or 'I want to focus more on strength training' or 'Please reduce the volume, I'm feeling fatigued'"
-              rows={3}
-              disabled={scheduleLoading}
-            />
-            <button
-              className="schedule-request-button"
-              onClick={handleScheduleRequest}
-              disabled={!scheduleRequest.trim() || scheduleLoading}
-            >
-              {scheduleLoading ? 'Sending...' : 'Send Request'}
-            </button>
-          </div>
-        </div>
-
-        {/* Schedule History */}
-        {scheduleHistory.length > 0 && (
-          <div className="schedule-history-section">
-            <h3 className="schedule-history-title">Recent Conversations</h3>
-            <div className="schedule-history-list">
-              {scheduleHistory.slice(0, 5).map((entry) => (
-                <div key={entry.id} className="schedule-history-item">
-                  <div className="schedule-history-request">
-                    <div className="schedule-history-label">You:</div>
-                    <div className="schedule-history-content">{entry.request}</div>
-                    <div className="schedule-history-time">
-                      {new Date(entry.timestamp).toLocaleDateString()} {new Date(entry.timestamp).toLocaleTimeString()}
-                    </div>
-                  </div>
-                  <div className="schedule-history-response">
-                    <div className="schedule-history-label">Trainer:</div>
-                    <div className="schedule-history-content">{entry.response}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {currentPlan ? (
           <div className="plan-details">
@@ -1488,6 +1535,58 @@ export default function App() {
           <div className="empty-state">
             <p>No current workout plan found.</p>
             <p>Contact your trainer to get a plan assigned.</p>
+          </div>
+        )}
+
+        {/* Schedule Request Section - Moved to bottom */}
+        <div className="schedule-request-section">
+          <div className="schedule-request-header">
+            <h3 className="schedule-request-title">Request Plan Changes</h3>
+            <p className="schedule-request-description">
+              Ask your trainer to modify your workout plan, add exercises, or adjust training parameters.
+            </p>
+          </div>
+
+          <div className="schedule-request-form">
+            <textarea
+              className="schedule-request-input"
+              value={scheduleRequest}
+              onChange={(e) => setScheduleRequest(e.target.value)}
+              placeholder="e.g., 'Can we add more chest exercises on Monday?' or 'I want to focus more on strength training' or 'Please reduce the volume, I'm feeling fatigued'"
+              rows={3}
+              disabled={scheduleLoading}
+            />
+            <button
+              className="schedule-request-button"
+              onClick={handleScheduleRequest}
+              disabled={!scheduleRequest.trim() || scheduleLoading}
+            >
+              {scheduleLoading ? 'Sending...' : 'Send Request'}
+            </button>
+          </div>
+        </div>
+
+        {/* Schedule History - Moved to bottom */}
+        {scheduleHistory.length > 0 && (
+          <div className="schedule-history-section">
+            <h3 className="schedule-history-title">Recent Conversations</h3>
+            <div className="schedule-history-list">
+              {scheduleHistory.slice(0, 5).map((entry) => (
+                <div key={entry.id} className="schedule-history-item">
+                  <div className="schedule-history-request">
+                    <div className="schedule-history-label">You:</div>
+                    <div className="schedule-history-content">{entry.request}</div>
+                    <div className="schedule-history-time">
+                      {new Date(entry.timestamp).toLocaleDateString()} {new Date(entry.timestamp).toLocaleTimeString()}
+                    </div>
+                  </div>
+                  <div className="schedule-history-response">
+                    <div className="schedule-history-label">Trainer:</div>
+                    <div className="schedule-history-content">{entry.response}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -1619,7 +1718,7 @@ export default function App() {
                           {exercise.sets.length} sets
                           {!exercise.sets.some(set => set.isBackendData) && (
                             <>
-                              • {exercise.totalReps} reps • {exercise.maxWeight}kg max
+                              • {exercise.totalReps} reps • {formatWeight(exercise.maxWeight)} max
                             </>
                           )}
                         </span>

@@ -167,6 +167,20 @@ body {
   background-color: #34c759;
 }
 
+.workout-control--unit {
+  background-color: #339af0;
+  transition: all 0.2s ease;
+}
+
+.workout-control--unit:hover {
+  background-color: #4dabf7;
+  transform: scale(1.05);
+}
+
+.workout-control--unit:active {
+  transform: scale(0.95);
+}
+
 .workout-control__icon {
   line-height: 1;
 }
