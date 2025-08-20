@@ -325,6 +325,40 @@ export default function App() {
     }
   };
 
+  // Save plan changes to API
+  const savePlanChanges = async (updatedPlan: WorkoutPlan) => {
+    if (!user?.id) return;
+
+    try {
+      const response = await fetch("/api/v1/plan/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tg_user_id: user.id,
+          plan: updatedPlan
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          console.log("Plan changes saved successfully");
+          // Update local state with the saved plan
+          setCurrentPlan(data.plan);
+        } else {
+          console.error("Failed to save plan:", data.error);
+          alert("Failed to save plan changes. Please try again.");
+        }
+      } else {
+        console.error("Failed to save plan:", response.statusText);
+        alert("Failed to save plan changes. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error saving plan:", error);
+      alert("Failed to save plan changes. Please try again.");
+    }
+  };
+
   // Fetch workout history
   const fetchWorkoutHistory = async () => {
     if (!user?.id) return;
@@ -806,7 +840,7 @@ export default function App() {
   };
 
   // Handle editing exercise name in plan
-  const handlePlanExerciseEdit = (dayIndex: number, exerciseIndex: number) => {
+  const handlePlanExerciseEdit = async (dayIndex: number, exerciseIndex: number) => {
     if (!currentPlan || !currentPlan.days) return;
 
     const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
@@ -814,13 +848,11 @@ export default function App() {
 
     if (newName && newName.trim() && newName !== exercise.name) {
       // Update the plan state
-      setCurrentPlan(prev => {
-        if (!prev || !prev.days) return prev;
+      const updatedPlan = { ...currentPlan };
+      updatedPlan.days![dayIndex].exercises[exerciseIndex].name = newName.trim();
 
-        const updated = { ...prev };
-        updated.days![dayIndex].exercises[exerciseIndex].name = newName.trim();
-        return updated;
-      });
+      // Save to API
+      await savePlanChanges(updatedPlan);
 
       // Also update workout exercises if they match
       setExercises(prev => prev.map(ex => ex === exercise.name ? newName.trim() : ex));
@@ -831,25 +863,23 @@ export default function App() {
   };
 
   // Handle editing exercise target in plan
-  const handlePlanExerciseTargetEdit = (dayIndex: number, exerciseIndex: number) => {
+  const handlePlanExerciseTargetEdit = async (dayIndex: number, exerciseIndex: number) => {
     if (!currentPlan || !currentPlan.days) return;
 
     const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
     const newTarget = prompt(`Enter new target for "${exercise.name}":`, exercise.target);
 
     if (newTarget && newTarget.trim() && newTarget !== exercise.target) {
-      setCurrentPlan(prev => {
-        if (!prev || !prev.days) return prev;
+      const updatedPlan = { ...currentPlan };
+      updatedPlan.days![dayIndex].exercises[exerciseIndex].target = newTarget.trim();
 
-        const updated = { ...prev };
-        updated.days![dayIndex].exercises[exerciseIndex].target = newTarget.trim();
-        return updated;
-      });
+      // Save to API
+      await savePlanChanges(updatedPlan);
     }
   };
 
   // Handle editing set details in plan
-  const handlePlanSetEdit = (dayIndex: number, exerciseIndex: number, setIndex: number) => {
+  const handlePlanSetEdit = async (dayIndex: number, exerciseIndex: number, setIndex: number) => {
     if (!currentPlan || !currentPlan.days) return;
 
     const set = currentPlan.days[dayIndex].exercises[exerciseIndex].sets[setIndex];
@@ -858,23 +888,20 @@ export default function App() {
     const newRest = prompt(`Enter new rest time (seconds) for set ${setIndex + 1}:`, set.rest_sec?.toString() || '');
 
     if (newLoad !== null || newReps !== null || newRest !== null) {
-      setCurrentPlan(prev => {
-        if (!prev || !prev.days) return prev;
+      const updatedPlan = { ...currentPlan };
+      const targetSet = updatedPlan.days![dayIndex].exercises[exerciseIndex].sets[setIndex];
 
-        const updated = { ...prev };
-        const targetSet = updated.days![dayIndex].exercises[exerciseIndex].sets[setIndex];
+      if (newLoad !== null && newLoad.trim()) targetSet.load = newLoad.trim();
+      if (newReps !== null && newReps.trim()) targetSet.reps = newReps.trim();
+      if (newRest !== null && newRest.trim()) targetSet.rest_sec = parseInt(newRest) || 0;
 
-        if (newLoad !== null && newLoad.trim()) targetSet.load = newLoad.trim();
-        if (newReps !== null && newReps.trim()) targetSet.reps = newReps.trim();
-        if (newRest !== null && newRest.trim()) targetSet.rest_sec = parseInt(newRest) || 0;
-
-        return updated;
-      });
+      // Save to API
+      await savePlanChanges(updatedPlan);
     }
   };
 
   // Handle adding new exercise to a day
-  const handleAddPlanExercise = (dayIndex: number) => {
+  const handleAddPlanExercise = async (dayIndex: number) => {
     if (!currentPlan || !currentPlan.days) return;
 
     const exerciseName = prompt("Enter exercise name:");
@@ -885,24 +912,22 @@ export default function App() {
       const rest = prompt("Enter rest time in seconds:");
 
       if (exerciseName.trim()) {
-        setCurrentPlan(prev => {
-          if (!prev || !prev.days) return prev;
+        const updatedPlan = { ...currentPlan };
+        const newExercise = {
+          name: exerciseName.trim(),
+          target: target?.trim() || '',
+          sets: [{
+            load: load?.trim() || '',
+            reps: reps?.trim() || '',
+            rest_sec: parseInt(rest || '60') || 60
+          }],
+          equipment_ok: []
+        };
 
-          const updated = { ...prev };
-          const newExercise = {
-            name: exerciseName.trim(),
-            target: target?.trim() || '',
-            sets: [{
-              load: load?.trim() || '',
-              reps: reps?.trim() || '',
-              rest_sec: parseInt(rest || '60') || 60
-            }],
-            equipment_ok: []
-          };
+        updatedPlan.days![dayIndex].exercises.push(newExercise);
 
-          updated.days![dayIndex].exercises.push(newExercise);
-          return updated;
-        });
+        // Save to API
+        await savePlanChanges(updatedPlan);
 
         // Also add to workout exercises if not already there
         setExercises(prev => {
@@ -916,7 +941,7 @@ export default function App() {
   };
 
   // Handle adding new set to an exercise
-  const handleAddPlanSet = (dayIndex: number, exerciseIndex: number) => {
+  const handleAddPlanSet = async (dayIndex: number, exerciseIndex: number) => {
     if (!currentPlan || !currentPlan.days) return;
 
     const load = prompt("Enter load (e.g., 'moderate', 'heavy'):");
@@ -924,50 +949,44 @@ export default function App() {
     const rest = prompt("Enter rest time in seconds:");
 
     if (load?.trim() || reps?.trim()) {
-      setCurrentPlan(prev => {
-        if (!prev || !prev.days) return prev;
+      const updatedPlan = { ...currentPlan };
+      const newSet = {
+        load: load?.trim() || '',
+        reps: reps?.trim() || '',
+        rest_sec: parseInt(rest || '60') || 60
+      };
 
-        const updated = { ...prev };
-        const newSet = {
-          load: load?.trim() || '',
-          reps: reps?.trim() || '',
-          rest_sec: parseInt(rest || '60') || 60
-        };
+      updatedPlan.days![dayIndex].exercises[exerciseIndex].sets.push(newSet);
 
-        updated.days![dayIndex].exercises[exerciseIndex].sets.push(newSet);
-        return updated;
-      });
+      // Save to API
+      await savePlanChanges(updatedPlan);
     }
   };
 
   // Handle deleting exercise from plan
-  const handleDeletePlanExercise = (dayIndex: number, exerciseIndex: number) => {
+  const handleDeletePlanExercise = async (dayIndex: number, exerciseIndex: number) => {
     if (!currentPlan || !currentPlan.days) return;
 
     const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
     if (confirm(`Are you sure you want to delete "${exercise.name}" from the plan?`)) {
-      setCurrentPlan(prev => {
-        if (!prev || !prev.days) return prev;
+      const updatedPlan = { ...currentPlan };
+      updatedPlan.days![dayIndex].exercises.splice(exerciseIndex, 1);
 
-        const updated = { ...prev };
-        updated.days![dayIndex].exercises.splice(exerciseIndex, 1);
-        return updated;
-      });
+      // Save to API
+      await savePlanChanges(updatedPlan);
     }
   };
 
   // Handle deleting set from plan
-  const handleDeletePlanSet = (dayIndex: number, exerciseIndex: number, setIndex: number) => {
+  const handleDeletePlanSet = async (dayIndex: number, exerciseIndex: number, setIndex: number) => {
     if (!currentPlan || !currentPlan.days) return;
 
     if (confirm(`Are you sure you want to delete set ${setIndex + 1}?`)) {
-      setCurrentPlan(prev => {
-        if (!prev || !prev.days) return prev;
+      const updatedPlan = { ...currentPlan };
+      updatedPlan.days![dayIndex].exercises[exerciseIndex].sets.splice(setIndex, 1);
 
-        const updated = { ...prev };
-        updated.days![dayIndex].exercises[exerciseIndex].sets.splice(setIndex, 1);
-        return updated;
-      });
+      // Save to API
+      await savePlanChanges(updatedPlan);
     }
   };
 
