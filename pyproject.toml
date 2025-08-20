@@ -41,6 +41,9 @@ test = [
 requires = ["uv_build>=0.8.7,<0.9.0"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend]
+source-include = ["src/buddy_gym_bot/bot/locales/**"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py313"

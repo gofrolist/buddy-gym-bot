@@ -17,7 +17,7 @@ primary_region = 'lax'
   FF_EXERCISEDB = "true"
 
 [processes]
-  web = "uvicorn buddy_gym_bot.server.main:app --host 0.0.0.0 --port 8080"
+  web = "uvicorn buddy_gym_bot.server.main:app --host 0.0.0.0 --port 8080 --loop uvloop --http httptools"
   bot = "/app/.venv/bin/python -m buddy_gym_bot.bot.main"
 
 [[services]]
@@ -42,18 +42,15 @@ primary_region = 'lax'
     soft_limit = 25
 
   [[services.http_checks]]
-    interval = "15s"
+    interval = "5s"
     timeout = "2s"
     method = "GET"
     path = "/healthz"
     protocol = "http"
     tls_skip_verify = false
-    grace_period = "10s"
+    grace_period = "8s"
 
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-
-[deploy]
-  release_command = "pybabel compile -d .venv/lib/python3.13/site-packages/buddy_gym_bot/bot/locales/ -D messages -f "

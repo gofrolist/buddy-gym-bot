@@ -11,6 +11,8 @@ RUN npm run build
 FROM python:3.13.3-alpine AS builder
 COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /uvx /bin/
 
+ENV UV_LINK_MODE=copy
+
 WORKDIR /app
 
 # Install dependencies
@@ -22,11 +24,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copy the project into the intermediate image
 COPY . /app
 
-# Sync the project
+# Sync the project (this installs all dependencies including Babel)
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-editable
 
-FROM python:3.13.3-alpine
+FROM python:3.13.3-alpine AS runtime
 
 WORKDIR /app
 
@@ -37,6 +39,10 @@ ENV TZ=Etc/UTC
 COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Compile locales
+RUN pybabel compile -d .venv/lib/python3.13/site-packages/buddy_gym_bot/bot/locales/ -D messages -f
+
+# Copy the webapp
 COPY --from=webapp /web/dist /app/static/webapp
 
 # Run the application

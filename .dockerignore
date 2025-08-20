@@ -53,8 +53,52 @@
 **/cover
 
 # Translations
-**/*.mo
 **/*.pot
+
+# Keep compiled locales (.mo files) for runtime
+
+# Development and testing files
+**/tests/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.coverage
+**/htmlcov/
+**/.tox/
+**/.nox/
+
+# IDE and editor files
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/*~
+
+# OS files
+**/.DS_Store
+**/Thumbs.db
+
+# Git
+**/.git/
+**/.gitignore
+
+# Documentation
+# **/README.md
+**/LICENSE
+**/CHANGELOG.md
+**/docs/
+
+# Build artifacts
+**/build/
+**/dist/
+**/*.egg-info/
+
+# Environment files
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Pre-commit
+**/.pre-commit-config.yaml
 
 # Django stuff:
 **/*.log
