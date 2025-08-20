@@ -22,6 +22,7 @@ class WorkoutRequest(BaseModel):
     reps: int
     rpe: float | None = None
     is_warmup: bool = False
+    is_completed: bool = True  # Default to completed since sets are marked complete when created
 
 
 @router.post("/workout")
@@ -48,6 +49,7 @@ async def log_workout(req: WorkoutRequest) -> dict[str, Any]:
             reps=req.reps,
             rpe=req.rpe,
             is_warmup=req.is_warmup,
+            is_completed=req.is_completed,
         )
 
         # Handle referral fulfillment

@@ -154,6 +154,7 @@ class SetRow(Base):
     reps: Mapped[int] = mapped_column(Integer)
     rpe: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_warmup: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_completed: Mapped[bool] = mapped_column(Boolean, default=True)  # Track set completion status
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

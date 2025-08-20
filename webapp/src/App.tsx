@@ -749,7 +749,7 @@ export default function App() {
         ));
         setEditingSetId(null);
       } else {
-                // Add new set with single-unit storage and input tracking
+        // Add new set with single-unit storage and input tracking
         const weightKg = parseFloat(currentWeight);
         const inputWeight = unitSystem === 'imperial' ?
           parseFloat(getWeightInputValue()) :
@@ -763,7 +763,7 @@ export default function App() {
           input_unit: unitSystem === 'metric' ? 'kg' : 'lbs',
           reps,
           rpe: null,
-          isCompleted: false,
+          isCompleted: true, // Automatically mark as completed
           isPR: false
         };
         console.log("Adding new set:", newSet);
@@ -794,25 +794,6 @@ export default function App() {
     }
   };
 
-  // Handle completing a set
-  const handleCompleteSet = async (setId: string) => {
-    setWorkoutSets(prev => {
-      const updated = prev.map(set =>
-        set.id === setId
-          ? { ...set, isCompleted: !set.isCompleted }
-          : set
-      );
-
-      // Save to API when set is completed
-      const updatedSet = updated.find(set => set.id === setId);
-      if (updatedSet) {
-        saveSetToAPI(updatedSet);
-      }
-
-      return updated;
-    });
-  };
-
   // Save set to API
   const saveSetToAPI = async (set: WorkoutSet) => {
     try {
@@ -824,7 +805,7 @@ export default function App() {
           exercise: set.exercise,
           weight_kg: set.weight,
           reps: set.reps,
-          is_completed: set.isCompleted,
+          is_completed: set.isCompleted, // Include completion status
           workout_session_id: workoutStartTime.toString()
         }),
       });
@@ -859,44 +840,6 @@ export default function App() {
       setWorkoutSets(prev => prev.map(set =>
         set.exercise === exercise.name ? { ...set, exercise: newName.trim() } : set
       ));
-    }
-  };
-
-  // Handle editing exercise target in plan
-  const handlePlanExerciseTargetEdit = async (dayIndex: number, exerciseIndex: number) => {
-    if (!currentPlan || !currentPlan.days) return;
-
-    const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
-    const newTarget = prompt(`Enter new target for "${exercise.name}":`, exercise.target);
-
-    if (newTarget && newTarget.trim() && newTarget !== exercise.target) {
-      const updatedPlan = { ...currentPlan };
-      updatedPlan.days![dayIndex].exercises[exerciseIndex].target = newTarget.trim();
-
-      // Save to API
-      await savePlanChanges(updatedPlan);
-    }
-  };
-
-  // Handle editing set details in plan
-  const handlePlanSetEdit = async (dayIndex: number, exerciseIndex: number, setIndex: number) => {
-    if (!currentPlan || !currentPlan.days) return;
-
-    const set = currentPlan.days[dayIndex].exercises[exerciseIndex].sets[setIndex];
-    const newLoad = prompt(`Enter new load for set ${setIndex + 1}:`, set.load || '');
-    const newReps = prompt(`Enter new reps for set ${setIndex + 1}:`, set.reps || '');
-    const newRest = prompt(`Enter new rest time (seconds) for set ${setIndex + 1}:`, set.rest_sec?.toString() || '');
-
-    if (newLoad !== null || newReps !== null || newRest !== null) {
-      const updatedPlan = { ...currentPlan };
-      const targetSet = updatedPlan.days![dayIndex].exercises[exerciseIndex].sets[setIndex];
-
-      if (newLoad !== null && newLoad.trim()) targetSet.load = newLoad.trim();
-      if (newReps !== null && newReps.trim()) targetSet.reps = newReps.trim();
-      if (newRest !== null && newRest.trim()) targetSet.rest_sec = parseInt(newRest) || 0;
-
-      // Save to API
-      await savePlanChanges(updatedPlan);
     }
   };
 
@@ -940,6 +883,58 @@ export default function App() {
     }
   };
 
+  // Handle deleting exercise from plan
+  const handleDeletePlanExercise = async (dayIndex: number, exerciseIndex: number) => {
+    if (!currentPlan || !currentPlan.days) return;
+
+    const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
+    if (confirm(`Are you sure you want to delete "${exercise.name}" from the plan?`)) {
+      const updatedPlan = { ...currentPlan };
+      updatedPlan.days![dayIndex].exercises.splice(exerciseIndex, 1);
+
+      // Save to API
+      await savePlanChanges(updatedPlan);
+    }
+  };
+
+  // Handle editing exercise target in plan
+  const handlePlanExerciseTargetEdit = async (dayIndex: number, exerciseIndex: number) => {
+    if (!currentPlan || !currentPlan.days) return;
+
+    const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
+    const newTarget = prompt(`Enter new target for "${exercise.name}":`, exercise.target);
+
+    if (newTarget && newTarget.trim() && newTarget !== exercise.target) {
+      const updatedPlan = { ...currentPlan };
+      updatedPlan.days![dayIndex].exercises[exerciseIndex].target = newTarget.trim();
+
+      // Save to API
+      await savePlanChanges(updatedPlan);
+    }
+  };
+
+  // Handle editing set details in plan
+  const handlePlanSetEdit = async (dayIndex: number, exerciseIndex: number, setIndex: number) => {
+    if (!currentPlan || !currentPlan.days) return;
+
+    const set = currentPlan.days[dayIndex].exercises[exerciseIndex].sets[setIndex];
+    const newLoad = prompt(`Enter new load for set ${setIndex + 1}:`, set.load || '');
+    const newReps = prompt(`Enter new reps for set ${setIndex + 1}:`, set.reps || '');
+    const newRest = prompt(`Enter new rest time (seconds) for set ${setIndex + 1}:`, set.rest_sec?.toString() || '');
+
+    if (newLoad !== null || newReps !== null || newRest !== null) {
+      const updatedPlan = { ...currentPlan };
+      const targetSet = updatedPlan.days![dayIndex].exercises[exerciseIndex].sets[setIndex];
+
+      if (newLoad !== null && newLoad.trim()) targetSet.load = newLoad.trim();
+      if (newReps !== null && newReps.trim()) targetSet.reps = newReps.trim();
+      if (newRest !== null && newRest.trim()) targetSet.rest_sec = parseInt(newRest) || 0;
+
+      // Save to API
+      await savePlanChanges(updatedPlan);
+    }
+  };
+
   // Handle adding new set to an exercise
   const handleAddPlanSet = async (dayIndex: number, exerciseIndex: number) => {
     if (!currentPlan || !currentPlan.days) return;
@@ -957,20 +952,6 @@ export default function App() {
       };
 
       updatedPlan.days![dayIndex].exercises[exerciseIndex].sets.push(newSet);
-
-      // Save to API
-      await savePlanChanges(updatedPlan);
-    }
-  };
-
-  // Handle deleting exercise from plan
-  const handleDeletePlanExercise = async (dayIndex: number, exerciseIndex: number) => {
-    if (!currentPlan || !currentPlan.days) return;
-
-    const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
-    if (confirm(`Are you sure you want to delete "${exercise.name}" from the plan?`)) {
-      const updatedPlan = { ...currentPlan };
-      updatedPlan.days![dayIndex].exercises.splice(exerciseIndex, 1);
 
       // Save to API
       await savePlanChanges(updatedPlan);
@@ -1321,13 +1302,6 @@ export default function App() {
                         >
                           ✏️
                         </button>
-                        <button
-                          className={`set-action-button set-action-button--complete ${set.isCompleted ? 'completed' : ''}`}
-                          onClick={() => handleCompleteSet(set.id)}
-                          title={set.isCompleted ? "Set completed" : "Mark set as complete"}
-                        >
-                          {set.isCompleted ? '✓' : '○'}
-                        </button>
                       </div>
                     </div>
                   ))}
@@ -1528,20 +1502,6 @@ export default function App() {
                                   {set.reps && ` • ${set.reps} reps`}
                                   {set.rest_sec && ` • ${set.rest_sec}s rest`}
                                 </span>
-                                <button
-                                  className="plan-set-action plan-set-action--edit"
-                                  onClick={() => handlePlanSetEdit(dayIndex, exerciseIndex, setIndex)}
-                                  title="Edit set"
-                                >
-                                  ✏️
-                                </button>
-                                <button
-                                  className="plan-set-action plan-set-action--delete"
-                                  onClick={() => handleDeletePlanSet(dayIndex, exerciseIndex, setIndex)}
-                                  title="Delete set"
-                                >
-                                  ×
-                                </button>
                               </div>
                             ))}
                           </div>
@@ -1554,16 +1514,9 @@ export default function App() {
                               ✏️
                             </button>
                             <button
-                              className="plan-exercise-action plan-exercise-action--target"
-                              onClick={() => handlePlanExerciseTargetEdit(dayIndex, exerciseIndex)}
-                              title="Edit exercise target"
-                            >
-                              ⚙️
-                            </button>
-                            <button
-                              className="plan-exercise-action plan-exercise-action--add-set"
-                              onClick={() => handleAddPlanSet(dayIndex, exerciseIndex)}
-                              title="Add new set"
+                              className="plan-exercise-action plan-exercise-action--add"
+                              onClick={() => handleAddPlanExercise(dayIndex)}
+                              title="Add new exercise to this day"
                             >
                               +
                             </button>

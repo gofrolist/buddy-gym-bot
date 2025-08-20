@@ -962,35 +962,27 @@ body {
 }
 
 .plan-exercise-action--edit {
-  background-color: #339af0;
+  background-color: #3b82f6;
 }
 
 .plan-exercise-action--edit:hover {
-  background-color: #4dabf7;
+  background-color: #2563eb;
 }
 
-.plan-exercise-action--target {
-  background-color: #ff9500;
+.plan-exercise-action--add {
+  background-color: #10b981;
 }
 
-.plan-exercise-action--target:hover {
-  background-color: #ffb340;
-}
-
-.plan-exercise-action--add-set {
-  background-color: #34c759;
-}
-
-.plan-exercise-action--add-set:hover {
-  background-color: #30d158;
+.plan-exercise-action--add:hover {
+  background-color: #059669;
 }
 
 .plan-exercise-action--delete {
-  background-color: #ff3b30;
+  background-color: #ef4444;
 }
 
 .plan-exercise-action--delete:hover {
-  background-color: #ff453a;
+  background-color: #dc2626;
 }
 
 .plan-exercise-header {
@@ -1046,41 +1038,6 @@ body {
   font-size: 11px;
   padding: 3px 6px;
   flex: 1;
-}
-
-.plan-set-action {
-  width: 20px;
-  height: 20px;
-  border: none;
-  border-radius: 50%;
-  background-color: #333;
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 10px;
-  transition: all 0.2s ease;
-}
-
-.plan-set-action:hover {
-  transform: scale(1.1);
-}
-
-.plan-set-action--edit {
-  background-color: #339af0;
-}
-
-.plan-set-action--edit:hover {
-  background-color: #4dabf7;
-}
-
-.plan-set-action--delete {
-  background-color: #ff3b30;
-}
-
-.plan-set-action--delete:hover {
-  background-color: #ff453a;
 }
 
 .plan-add-exercise-button {

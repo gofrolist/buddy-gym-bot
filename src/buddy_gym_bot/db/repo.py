@@ -317,6 +317,7 @@ async def start_session_and_append_set(
     reps: int,
     rpe: float | None,
     is_warmup: bool = False,
+    is_completed: bool = True,  # Default to completed since sets are marked complete when created
     title: str | None = None,
 ) -> tuple[WorkoutSession, SetRow]:
     """
@@ -340,6 +341,7 @@ async def start_session_and_append_set(
             reps=reps,
             rpe=rpe,
             is_warmup=is_warmup,
+            is_completed=is_completed,  # Include completion status
         )
         s.add(row)
 
@@ -373,6 +375,7 @@ async def append_set(
     reps: int,
     rpe: float | None,
     is_warmup: bool = False,
+    is_completed: bool = True,  # Default to completed since sets are marked complete when created
 ) -> SetRow:
     """
     Append a set to a workout session.
@@ -388,6 +391,7 @@ async def append_set(
             reps=reps,
             rpe=rpe,
             is_warmup=is_warmup,
+            is_completed=is_completed,  # Include completion status
         )
         s.add(row)
         await s.commit()
