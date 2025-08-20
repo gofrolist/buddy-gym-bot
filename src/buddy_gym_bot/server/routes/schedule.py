@@ -51,12 +51,27 @@ async def request_schedule_change(request: ScheduleRequest):
         if request.context:
             logging.info(f"Context details: {json.dumps(request.context, default=str)}")
 
+        # Ensure user exists first (this is critical for foreign key constraints)
+        try:
+            user = await repo.upsert_user(request.tg_user_id, handle=None, lang=None)
+            logging.info(
+                f"Ensured user {request.tg_user_id} exists in database with internal ID {user.id}"
+            )
+        except Exception as e:
+            logging.error(f"Failed to ensure user exists: {e}")
+            return ScheduleResponse(
+                success=False,
+                message="Failed to process schedule request",
+                response="I'm sorry, there was an issue with your user account. Please try again or contact support.",
+                plan=None,
+            )
+
         # Get current plan for context
         current_plan = None
         if request.context and request.context.get("current_plan"):
             # Reconstruct the full plan structure from the simplified context
             try:
-                user_plan = await repo.get_user_plan(request.tg_user_id)
+                user_plan = await repo.get_user_plan(user.id)
                 if user_plan and user_plan.get("days"):
                     current_plan = user_plan
                     logging.info(
@@ -78,7 +93,19 @@ async def request_schedule_change(request: ScheduleRequest):
                 logging.info(f"Generated new plan: {new_plan.get('program_name', 'Unknown')}")
 
                 # Save the new plan to database
-                await repo.upsert_user_plan(request.tg_user_id, new_plan)
+                try:
+                    await repo.upsert_user_plan(user.id, new_plan)
+                    logging.info(
+                        f"Successfully saved new plan for user {request.tg_user_id} (internal ID: {user.id})"
+                    )
+                except Exception as e:
+                    logging.error(f"Failed to save new plan to database: {e}")
+                    return ScheduleResponse(
+                        success=False,
+                        message="Failed to save updated plan",
+                        response=f"I generated a new workout plan based on your request: '{request.message}', but there was an issue saving it to your account. Please try again or contact support.",
+                        plan=new_plan,  # Still return the plan so user can see what was generated
+                    )
 
                 return ScheduleResponse(
                     success=True,
