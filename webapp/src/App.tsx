@@ -20,9 +20,9 @@ interface SetData {
 interface WorkoutSet {
   id: string;
   exercise: string;
-  weight: number;  // Stored in kg (for backward compatibility)
-  weight_lbs: number;  // Stored in lbs to prevent conversion errors
-  input_unit: 'kg' | 'lbs';  // What unit the user originally entered
+  weight: number;  // Stored in kg (canonical unit)
+  input_weight: number;  // What user typed (for auditability)
+  input_unit: 'kg' | 'lbs';  // What unit user entered
   reps: number;
   rpe: number | null;
   isCompleted: boolean;
@@ -106,7 +106,8 @@ function detectUnitSystem(): UnitSystem {
 
 // Function to convert kg to lbs
 function kgToLbs(kg: number): number {
-  return Math.round(kg * 2.20462); // Round to whole number for lbs
+  // Round to nearest 0.5 lbs for better UX
+  return Math.round(kg * 2.20462 * 2) / 2;
 }
 
 // Function to convert lbs to kg
@@ -714,17 +715,17 @@ export default function App() {
         ));
         setEditingSetId(null);
       } else {
-        // Add new set with dual-unit storage
+                // Add new set with single-unit storage and input tracking
         const weightKg = parseFloat(currentWeight);
-        const weightLbs = unitSystem === 'imperial' ?
+        const inputWeight = unitSystem === 'imperial' ?
           parseFloat(getWeightInputValue()) :
-          kgToLbs(weightKg);
+          weightKg;
 
         const newSet: WorkoutSet = {
           id: Date.now().toString(),
           exercise: currentExercise,
           weight: weightKg,
-          weight_lbs: weightLbs,
+          input_weight: inputWeight,
           input_unit: unitSystem === 'metric' ? 'kg' : 'lbs',
           reps,
           rpe: null,
@@ -1123,9 +1124,13 @@ export default function App() {
   // Format weight display with correct unit using stored values
   const formatWeight = (set: WorkoutSet): string => {
     if (unitSystem === 'imperial') {
-      return `${set.weight_lbs} lbs`;
+      // Convert stored kg to lbs for display with proper rounding
+      const lbs = kgToLbs(set.weight);
+      return `${lbs} lbs`;
     } else {
-      return `${set.weight} kg`;
+      // Round kg to 1 decimal place for clean display
+      const roundedKg = Math.round(set.weight * 10) / 10;
+      return `${roundedKg} kg`;
     }
   };
 
@@ -1135,7 +1140,18 @@ export default function App() {
       const lbs = kgToLbs(weightKg);
       return `${lbs} lbs`;
     } else {
-      return `${weightKg} kg`;
+      // Round kg to 1 decimal place for clean display
+      const roundedKg = Math.round(weightKg * 10) / 10;
+      return `${roundedKg} kg`;
+    }
+  };
+
+  // Get original input display (for tooltips/debugging)
+  const getOriginalInputDisplay = (set: WorkoutSet): string => {
+    if (set.input_unit === 'lbs') {
+      return `${set.input_weight} lbs`;
+    } else {
+      return `${set.input_weight} kg`;
     }
   };
 
@@ -1671,7 +1687,7 @@ export default function App() {
                 id: `backend-${workout.id}-${backendExercise.name}`,
                 exercise: backendExercise.name,
                 weight: 0,
-                weight_lbs: 0,
+                input_weight: 0,
                 input_unit: 'kg' as const,
                 reps: 0,
                 rpe: null,
@@ -1689,7 +1705,7 @@ export default function App() {
               id: `backend-${workout.id}-${ex.name}`,
               exercise: ex.name,
               weight: 0,
-              weight_lbs: 0,
+              input_weight: 0,
               input_unit: 'kg' as const,
               reps: 0,
               rpe: null,

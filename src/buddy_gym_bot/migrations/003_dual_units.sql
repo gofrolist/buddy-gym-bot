@@ -1,20 +1,20 @@
--- Migration: Add dual-unit storage for weights
--- This allows storing both kg and lbs values to prevent conversion errors
+-- Migration: Single unit storage with input tracking
+-- Store weights in kg (canonical) and track user input for auditability
 
--- Add new columns for dual-unit storage
-ALTER TABLE set_rows ADD COLUMN IF NOT EXISTS weight_lbs DECIMAL(6,2);
+-- Add new columns for input tracking
+ALTER TABLE set_rows ADD COLUMN IF NOT EXISTS input_weight DECIMAL(7,3);
 ALTER TABLE set_rows ADD COLUMN IF NOT EXISTS input_unit VARCHAR(3) DEFAULT 'kg';
 
--- Update existing rows to populate weight_lbs based on current weight_kg
--- This ensures backward compatibility
+-- Update existing rows to populate input tracking
+-- For existing data, assume input was in kg
 UPDATE set_rows
-SET weight_lbs = ROUND(weight_kg * 2.20462, 0),
+SET input_weight = weight_kg,
     input_unit = 'kg'
-WHERE weight_lbs IS NULL;
+WHERE input_weight IS NULL;
 
--- Make weight_lbs NOT NULL after populating existing data
-ALTER TABLE set_rows ALTER COLUMN weight_lbs SET NOT NULL;
+-- Make input_weight NOT NULL after populating existing data
+ALTER TABLE set_rows ALTER COLUMN input_weight SET NOT NULL;
 
--- Add index for better query performance
-CREATE INDEX IF NOT EXISTS idx_set_rows_weight_lbs ON set_rows(weight_lbs);
+-- Add indexes for better query performance
+CREATE INDEX IF NOT EXISTS idx_set_rows_input_weight ON set_rows(input_weight);
 CREATE INDEX IF NOT EXISTS idx_set_rows_input_unit ON set_rows(input_unit);

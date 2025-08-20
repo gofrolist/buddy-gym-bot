@@ -149,7 +149,7 @@ class SetRow(Base):
     session_id: Mapped[int] = mapped_column(ForeignKey("workout_sessions.id"), index=True)
     exercise: Mapped[str] = mapped_column(String(120))
     weight_kg: Mapped[float] = mapped_column(Float)
-    weight_lbs: Mapped[float] = mapped_column(Float)  # Store lbs value to prevent conversion errors
+    input_weight: Mapped[float] = mapped_column(Float)  # What user typed (for auditability)
     input_unit: Mapped[str] = mapped_column(String(3), default="kg")  # What unit user entered
     reps: Mapped[int] = mapped_column(Integer)
     rpe: Mapped[float | None] = mapped_column(Float, nullable=True)

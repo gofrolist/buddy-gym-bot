@@ -56,7 +56,7 @@ async def test_referral_requires_sets() -> None:
             session_id=sess.id,
             exercise="bench",
             weight_kg=100,
-            weight_lbs=220,  # 100 kg = 220 lbs
+            input_weight=100,  # User entered 100 kg
             input_unit="kg",
             reps=5,
         )

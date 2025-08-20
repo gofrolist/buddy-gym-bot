@@ -60,15 +60,15 @@ class WorkoutService:
             # Use optimized single-transaction method for better performance
             from ..db import repo
 
-            # Calculate both units for dual-unit storage
+            # Store canonical weight in kg and track input
             weight_kg = weight  # Assuming weight is already in kg
-            weight_lbs = round(weight * 2.20462, 0)  # Convert to lbs
+            input_weight = weight  # Store what user entered
 
             session, set_data = await repo.start_session_and_append_set(
                 user_id=user_id,
                 exercise=exercise,
                 weight_kg=weight_kg,
-                weight_lbs=weight_lbs,
+                input_weight=input_weight,
                 input_unit="kg",  # Default to kg for backward compatibility
                 reps=reps,
                 rpe=rpe,
