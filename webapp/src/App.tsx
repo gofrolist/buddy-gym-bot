@@ -20,7 +20,9 @@ interface SetData {
 interface WorkoutSet {
   id: string;
   exercise: string;
-  weight: number;
+  weight: number;  // Stored in kg (for backward compatibility)
+  weight_lbs: number;  // Stored in lbs to prevent conversion errors
+  input_unit: 'kg' | 'lbs';  // What unit the user originally entered
   reps: number;
   rpe: number | null;
   isCompleted: boolean;
@@ -104,12 +106,12 @@ function detectUnitSystem(): UnitSystem {
 
 // Function to convert kg to lbs
 function kgToLbs(kg: number): number {
-  return Math.round(kg * 2.20462 * 10) / 10; // Round to 1 decimal place
+  return Math.round(kg * 2.20462); // Round to whole number for lbs
 }
 
 // Function to convert lbs to kg
 function lbsToKg(lbs: number): number {
-  return Math.round(lbs * 0.453592 * 10) / 10; // Round to 1 decimal place
+  return lbs * 0.453592; // Keep precision for kg storage
 }
 
 function tgUser() {
@@ -712,11 +714,18 @@ export default function App() {
         ));
         setEditingSetId(null);
       } else {
-        // Add new set
+        // Add new set with dual-unit storage
+        const weightKg = parseFloat(currentWeight);
+        const weightLbs = unitSystem === 'imperial' ?
+          parseFloat(getWeightInputValue()) :
+          kgToLbs(weightKg);
+
         const newSet: WorkoutSet = {
           id: Date.now().toString(),
           exercise: currentExercise,
-          weight,
+          weight: weightKg,
+          weight_lbs: weightLbs,
+          input_unit: unitSystem === 'metric' ? 'kg' : 'lbs',
           reps,
           rpe: null,
           isCompleted: false,
@@ -1111,13 +1120,23 @@ export default function App() {
     return setIndex + 1;
   };
 
-  // Format weight display with correct unit
-  const formatWeight = (weightKg: number): string => {
+  // Format weight display with correct unit using stored values
+  const formatWeight = (set: WorkoutSet): string => {
+    if (unitSystem === 'imperial') {
+      return `${set.weight_lbs} lbs`;
+    } else {
+      return `${set.weight} kg`;
+    }
+  };
+
+  // Format weight from kg value (for history calculations)
+  const formatWeightFromKg = (weightKg: number): string => {
     if (unitSystem === 'imperial') {
       const lbs = kgToLbs(weightKg);
       return `${lbs} lbs`;
+    } else {
+      return `${weightKg} kg`;
     }
-    return `${weightKg} kg`;
   };
 
   // Get weight input value in the correct unit
@@ -1133,7 +1152,7 @@ export default function App() {
     return weightKg.toString();
   };
 
-  // Handle weight input change with unit conversion
+  // Handle weight input change with dual-unit storage
   const handleWeightInputChange = (value: string) => {
     if (!value) {
       setCurrentWeight('');
@@ -1144,10 +1163,11 @@ export default function App() {
     if (isNaN(numValue)) return;
 
     if (unitSystem === 'imperial') {
-      // Convert lbs to kg for storage
+      // Store lbs value directly, convert to kg for calculations
       const kgValue = lbsToKg(numValue);
       setCurrentWeight(kgValue.toString());
     } else {
+      // Store kg value directly
       setCurrentWeight(value);
     }
   };
@@ -1253,7 +1273,7 @@ export default function App() {
                         </div>
                       </div>
                       <div className="sets-table-cell sets-table-cell--weight">
-                        {formatWeight(set.weight)}
+                        {formatWeight(set)}
                       </div>
                       <div className="sets-table-cell sets-table-cell--reps">
                         {set.reps}
@@ -1392,10 +1412,16 @@ export default function App() {
               <div className={`input-field ${inputMode === "reps" ? "input-field--active" : ""}`}>
                 <label className="input-label">Reps</label>
                 <input
-                type="number"
+                  type="number"
                   inputMode="numeric"
                   value={currentReps}
-                  onChange={(e) => setCurrentReps(e.target.value)}
+                  onChange={(e) => {
+                    // Only allow integers for reps
+                    const value = e.target.value;
+                    if (value === '' || /^\d+$/.test(value)) {
+                      setCurrentReps(value);
+                    }
+                  }}
                   className="weight-input__field"
                   placeholder="0"
                   min="1"
@@ -1645,6 +1671,8 @@ export default function App() {
                 id: `backend-${workout.id}-${backendExercise.name}`,
                 exercise: backendExercise.name,
                 weight: 0,
+                weight_lbs: 0,
+                input_unit: 'kg' as const,
                 reps: 0,
                 rpe: null,
                 isCompleted: true,
@@ -1661,6 +1689,8 @@ export default function App() {
               id: `backend-${workout.id}-${ex.name}`,
               exercise: ex.name,
               weight: 0,
+              weight_lbs: 0,
+              input_unit: 'kg' as const,
               reps: 0,
               rpe: null,
               isCompleted: true,
@@ -1724,7 +1754,7 @@ export default function App() {
                           {exercise.sets.length} sets
                           {!exercise.sets.some(set => set.isBackendData) && (
                             <>
-                              • {exercise.totalReps} reps • {formatWeight(exercise.maxWeight)} max
+                              • {exercise.totalReps} reps • {formatWeightFromKg(exercise.maxWeight)} max
                             </>
                           )}
                         </span>

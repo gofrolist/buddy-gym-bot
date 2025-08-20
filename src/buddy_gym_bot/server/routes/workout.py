@@ -36,11 +36,15 @@ async def log_workout(req: WorkoutRequest) -> dict[str, Any]:
         # Create workout session
         session = await repo.start_session(user.id, title="Web Log")
 
-        # Log the set
+        # Log the set with dual-unit storage
+        weight_lbs = round(req.weight_kg * 2.20462, 0)  # Convert to lbs
+
         set_data = await repo.append_set(
             session_id=session.id,
             exercise=req.exercise,
             weight_kg=req.weight_kg,
+            weight_lbs=weight_lbs,
+            input_unit="kg",  # Default to kg for backward compatibility
             reps=req.reps,
             rpe=req.rpe,
             is_warmup=req.is_warmup,

@@ -52,7 +52,14 @@ async def test_referral_requires_sets() -> None:
         await s.commit()
         await s.refresh(sess)
 
-        set_row = SetRow(session_id=sess.id, exercise="bench", weight_kg=100, reps=5)
+        set_row = SetRow(
+            session_id=sess.id,
+            exercise="bench",
+            weight_kg=100,
+            weight_lbs=220,  # 100 kg = 220 lbs
+            input_unit="kg",
+            reps=5,
+        )
         s.add(set_row)
         await s.commit()
 
