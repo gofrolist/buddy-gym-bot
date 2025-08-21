@@ -19,7 +19,7 @@ def test_sensitive_data_filter_telegram_url():
         lineno=1,
         msg="https://api.telegram.org/bot123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11/sendMessage",
         args=(),
-        exc_info=None
+        exc_info=None,
     )
 
     # Apply the filter
@@ -45,7 +45,7 @@ def test_sensitive_data_filter_openai_url():
         lineno=1,
         msg="https://api.openai.com/v1/chat/completions Bearer sk-1234567890abcdef",
         args=(),
-        exc_info=None
+        exc_info=None,
     )
 
     # Apply the filter
@@ -71,7 +71,7 @@ def test_sensitive_data_filter_normal_message():
         lineno=1,
         msg="This is a normal log message",
         args=(),
-        exc_info=None
+        exc_info=None,
     )
 
     original_msg = record.msg
