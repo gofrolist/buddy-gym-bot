@@ -15,7 +15,7 @@ load_dotenv()
 
 
 def upload_exercisedb_to_openai():
-    """Upload ExerciseDB data to OpenAI and return file_id."""
+    """Upload ExerciseDB data to OpenAI and return file_id for use with file_search tool."""
     try:
         # Check if OpenAI API key is available
         api_key = os.getenv("OPENAI_API_KEY")
@@ -45,9 +45,18 @@ def upload_exercisedb_to_openai():
         file_id = file_response.id
         print(f"✅ File uploaded successfully: {file_id}")
 
+        # Create a vector store from the uploaded file
+        print("🔍 Creating vector store from uploaded file...")
+        vector_store_response = client.vector_stores.create(
+            name="ExerciseDB Data", file_ids=[file_id]
+        )
+
+        vector_store_id = vector_store_response.id
+        print(f"✅ Vector store created successfully: {vector_store_id}")
+
         # Save vector_store_id to local .env file for development
         env_file = Path(".env")
-        env_content = f"\n# OpenAI ExerciseDB vector store ID (auto-updated)\nOPENAI_VECTOR_STORE_ID={file_id}\n"
+        env_content = f"\n# OpenAI ExerciseDB vector store ID (auto-updated)\nOPENAI_VECTOR_STORE_ID={vector_store_id}\n"
 
         # Append to .env file
         with open(env_file, "a") as f:
@@ -57,11 +66,11 @@ def upload_exercisedb_to_openai():
         print(f"📊 File size: {data_file.stat().st_size / 1024:.1f} KB")
 
         print("\n🌍 For production deployment, set this secret in Fly.io:")
-        print(f"   flyctl secrets set OPENAI_VECTOR_STORE_ID={file_id}")
+        print(f"   flyctl secrets set OPENAI_VECTOR_STORE_ID={vector_store_id}")
         print("   # Or update your .env file manually:")
-        print(f"   # OPENAI_VECTOR_STORE_ID={file_id}")
+        print(f"   # OPENAI_VECTOR_STORE_ID={vector_store_id}")
 
-        return file_id
+        return vector_store_id
 
     except Exception as e:
         print(f"❌ Error uploading to OpenAI: {e}")
@@ -73,15 +82,15 @@ def main():
     print("OpenAI File Upload for ExerciseDB")
     print("=" * 40)
 
-    file_id = upload_exercisedb_to_openai()
+    vector_store_id = upload_exercisedb_to_openai()
 
-    if file_id:
+    if vector_store_id:
         print("\n🎉 Success! ExerciseDB data uploaded to OpenAI.")
-        print(f"   File ID: {file_id}")
+        print(f"   Vector Store ID: {vector_store_id}")
         print("   Ready to use with file_search tool in OpenAI scheduling!")
-        print("\n💡 To use this file_id in your code:")
-        print("   - Load from: src/buddy_gym_bot/data/openai_file_id.json")
-        print(f"   - Use in file_search tool with file_ids: ['{file_id}']")
+        print("\n💡 To use this vector_store_id in your code:")
+        print("   - Load from: src/buddy_gym_bot/data/openai_vector_store_id.json")
+        print(f"   - Use in file_search tool with vector_store_ids: ['{vector_store_id}']")
         return 0
     else:
         print("\n💥 Upload failed!")

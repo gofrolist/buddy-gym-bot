@@ -317,7 +317,14 @@ async def generate_schedule(
         payload = {
             "model": "gpt-5-mini",
             "input": input_text,
-            "tools": [{"type": "file_search", "vector_store_ids": [vector_store_id]}],
+            "tools": [
+                {
+                    "type": "file_search",
+                    "vector_store_ids": [
+                        vector_store_id
+                    ],  # Use vector_store_ids with proper vs_ ID
+                }
+            ],
             "include": ["file_search_call.results"],
         }
 
