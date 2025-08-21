@@ -13,18 +13,67 @@ router = APIRouter()
 
 
 @router.get("/exercises/search")
-async def exercises_search(q: str = Query(..., min_length=1), limit: int = 10) -> dict:
+async def exercises_search(
+    q: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le=50)
+) -> dict:
     """
     Search for exercises using ExerciseDB. Returns a list of matching exercises.
+    Perfect for manual plan editing where users type exercise names.
     """
     # Feature flag: ExerciseDB must be enabled
     if not SETTINGS.FF_EXERCISEDB:
         raise HTTPException(status_code=503, detail="ExerciseDB disabled")
+
     client = ExerciseDBClient()
     try:
-        items = await client.search(q, limit=limit)
+        items = await client.search_exercises_for_user(q, limit=limit)
     except Exception as err:
         logging.exception("ExerciseDB search failed")
         # mask remote errors
         raise HTTPException(status_code=502, detail="Upstream error") from err
-    return {"ok": True, "items": items}
+    finally:
+        await client.close()
+
+    return {"ok": True, "items": items, "query": q, "total": len(items)}
+
+
+@router.get("/exercises/category/{category}")
+async def exercises_by_category(category: str, limit: int = Query(20, ge=1, le=100)) -> dict:
+    """
+    Get exercises by body part category (e.g., chest, back, legs).
+    Useful for browsing exercises by muscle group.
+    """
+    if not SETTINGS.FF_EXERCISEDB:
+        raise HTTPException(status_code=503, detail="ExerciseDB disabled")
+
+    client = ExerciseDBClient()
+    try:
+        items = await client.search_exercises_by_category(category, limit=limit)
+    except Exception as err:
+        logging.exception("ExerciseDB category search failed")
+        raise HTTPException(status_code=502, detail="Upstream error") from err
+    finally:
+        await client.close()
+
+    return {"ok": True, "items": items, "category": category, "total": len(items)}
+
+
+@router.get("/exercises/equipment/{equipment}")
+async def exercises_by_equipment(equipment: str, limit: int = Query(20, ge=1, le=100)) -> dict:
+    """
+    Get exercises by equipment type (e.g., barbell, dumbbell, bodyweight).
+    Useful for filtering exercises by available equipment.
+    """
+    if not SETTINGS.FF_EXERCISEDB:
+        raise HTTPException(status_code=503, detail="ExerciseDB disabled")
+
+    client = ExerciseDBClient()
+    try:
+        items = await client.search_exercises_by_equipment(equipment, limit=limit)
+    except Exception as err:
+        logging.exception("ExerciseDB equipment search failed")
+        raise HTTPException(status_code=502, detail="Upstream error") from err
+    finally:
+        await client.close()
+
+    return {"ok": True, "items": items, "equipment": equipment, "total": len(items)}

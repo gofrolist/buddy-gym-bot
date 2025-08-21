@@ -37,16 +37,23 @@ interface WorkoutPlan {
     weekday: string;
     time: string;
     focus: string;
-    exercises: {
-      name: string;
-      target: string;
-      sets: {
-        load?: string;
-        reps?: string;
-        rest_sec?: number;
+          exercises: {
+        name: string;
+        target: string;
+        sets: {
+          load?: string;
+          reps?: string;
+          rest_sec?: number;
+        }[];
+        equipment_ok?: string[];
+        // ExerciseDB validation fields
+        exercise_db_id?: string | null;
+        exercise_db_name?: string | null;
+        exercise_db_category?: string | null;
+        exercise_db_equipment?: string | null;
+        exercise_db_instructions?: string[] | null;
+        is_validated?: boolean;
       }[];
-      equipment_ok?: string[];
-    }[];
   }[];
   weeks?: number;
   timezone?: string;
@@ -454,10 +461,11 @@ export default function App() {
 
   // Handle adding new exercise
   const handleAddExercise = () => {
-    const exerciseName = prompt("Enter exercise name:");
-    if (exerciseName && exerciseName.trim()) {
-      setExercises(prev => [...prev, exerciseName.trim()]);
-    }
+    // Show exercise search modal for workout tab
+    setSearchingDayIndex(-1); // -1 indicates workout tab
+    setExerciseSearchQuery("");
+    setExerciseSearchResults([]);
+    setShowExerciseSearch(true);
   };
 
     // Clean exercise name for API search (keep equipment, just clean formatting)
@@ -598,27 +606,26 @@ export default function App() {
       const cleanedName = cleanExerciseName(exerciseName);
       console.log(`Searching for exercise: "${exerciseName}" (cleaned: "${cleanedName}")`);
 
-      // Use the correct ExerciseDB search API
-      const searchEndpoint = `https://www.exercisedb.dev/api/v1/exercises/search?q=${encodeURIComponent(cleanedName)}&limit=10`;
+      // Use our local ExerciseDB endpoint
+      const searchEndpoint = `/api/v1/exercises/search?q=${encodeURIComponent(cleanedName)}&limit=10`;
 
       const response = await fetch(searchEndpoint, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
         },
-        mode: 'cors'
       });
 
       if (response.ok) {
                 const data = await response.json();
         console.log(`Search results for "${cleanedName}":`, data);
 
-        if (data && data.success && data.data && data.data.length > 0) {
+        if (data && data.ok && data.items && data.items.length > 0) {
           // Find the best match from the search results
-          let bestMatch = data.data[0];
+          let bestMatch = data.items[0];
 
           // Try to find exact match first
-          const exactMatch = data.data.find((ex: ExerciseDBData) =>
+          const exactMatch = data.items.find((ex: ExerciseDBData) =>
             ex.name.toLowerCase().includes(cleanedName.toLowerCase()) ||
             cleanedName.toLowerCase().includes(ex.name.toLowerCase())
           );
@@ -640,8 +647,8 @@ export default function App() {
 
             if (fallbackResponse.ok) {
               const fallbackData = await fallbackResponse.json();
-              if (fallbackData && fallbackData.success && fallbackData.data && fallbackData.data.length > 0) {
-                                const fallbackExercise = fallbackData.data[0];
+              if (fallbackData && fallbackData.ok && fallbackData.items && fallbackData.items.length > 0) {
+                                const fallbackExercise = fallbackData.items[0];
                 // Show fallback exercise in modal with GIF
                 setExerciseModalData(fallbackExercise);
                 setShowExerciseModal(true);
@@ -828,12 +835,55 @@ export default function App() {
     const newName = prompt(`Enter new name for "${exercise.name}":`, exercise.name);
 
     if (newName && newName.trim() && newName !== exercise.name) {
-      // Update the plan state
-      const updatedPlan = { ...currentPlan };
-      updatedPlan.days![dayIndex].exercises[exerciseIndex].name = newName.trim();
+      // Try to find the exercise in our database to get validation data
+      try {
+        const response = await fetch(`/api/v1/exercises/search?q=${encodeURIComponent(newName.trim())}&limit=1`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.items && data.items.length > 0) {
+            const dbExercise = data.items[0];
 
-      // Save to API
-      await savePlanChanges(updatedPlan);
+            // Update with ExerciseDB validation data
+            const updatedPlan = { ...currentPlan };
+            updatedPlan.days![dayIndex].exercises[exerciseIndex] = {
+              ...exercise,
+              name: newName.trim(),
+              exercise_db_id: dbExercise.id,
+              exercise_db_name: dbExercise.name,
+              exercise_db_category: dbExercise.category,
+              exercise_db_equipment: dbExercise.equipment,
+              exercise_db_instructions: dbExercise.instructions,
+              is_validated: true
+            };
+
+            // Save to API
+            await savePlanChanges(updatedPlan);
+          } else {
+            // Exercise not found in database - mark as custom
+            const updatedPlan = { ...currentPlan };
+            updatedPlan.days![dayIndex].exercises[exerciseIndex] = {
+              ...exercise,
+              name: newName.trim(),
+              exercise_db_id: null,
+              exercise_db_name: null,
+              exercise_db_category: null,
+              exercise_db_equipment: null,
+              exercise_db_instructions: null,
+              is_validated: false
+            };
+
+            // Save to API
+            await savePlanChanges(updatedPlan);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to validate exercise name:", error);
+
+        // Fallback to basic update without validation
+        const updatedPlan = { ...currentPlan };
+        updatedPlan.days![dayIndex].exercises[exerciseIndex].name = newName.trim();
+        await savePlanChanges(updatedPlan);
+      }
 
       // Also update workout exercises if they match
       setExercises(prev => prev.map(ex => ex === exercise.name ? newName.trim() : ex));
@@ -843,43 +893,126 @@ export default function App() {
     }
   };
 
-  // Handle adding new exercise to a day
+  // Exercise search state for manual editing
+  const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
+  const [exerciseSearchResults, setExerciseSearchResults] = useState<Array<{
+    id: string;
+    name: string;
+    category: string;
+    equipment: string;
+    instructions: string[];
+  }>>([]);
+  const [showExerciseSearch, setShowExerciseSearch] = useState(false);
+  const [searchingDayIndex, setSearchingDayIndex] = useState<number | null>(null);
+
+  // Search exercises for manual plan editing
+  const searchExercisesForPlan = async (query: string) => {
+    if (!query.trim()) {
+      setExerciseSearchResults([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/v1/exercises/search?q=${encodeURIComponent(query)}&limit=15`);
+      if (response.ok) {
+        const data = await response.json();
+        setExerciseSearchResults(data.items || []);
+      }
+    } catch (error) {
+      console.error("Exercise search failed:", error);
+      setExerciseSearchResults([]);
+    }
+  };
+
+  // Handle exercise search input change
+  const handleExerciseSearchChange = (query: string) => {
+    setExerciseSearchQuery(query);
+    if (query.trim().length >= 2) {
+      searchExercisesForPlan(query);
+    } else {
+      setExerciseSearchResults([]);
+    }
+  };
+
+  // Handle adding new exercise to a day with search
   const handleAddPlanExercise = async (dayIndex: number) => {
     if (!currentPlan || !currentPlan.days) return;
 
-    const exerciseName = prompt("Enter exercise name:");
-    if (exerciseName && exerciseName.trim()) {
-      const target = prompt("Enter target muscles:");
-      const load = prompt("Enter load (e.g., 'moderate', 'heavy'):");
-      const reps = prompt("Enter reps (e.g., '3x8-10'):");
-      const rest = prompt("Enter rest time in seconds:");
+    setSearchingDayIndex(dayIndex);
+    setExerciseSearchQuery("");
+    setExerciseSearchResults([]);
+    setShowExerciseSearch(true);
+  };
 
-      if (exerciseName.trim()) {
-        const updatedPlan = { ...currentPlan };
-        const newExercise = {
-          name: exerciseName.trim(),
-          target: target?.trim() || '',
-          sets: [{
-            load: load?.trim() || '',
-            reps: reps?.trim() || '',
-            rest_sec: parseInt(rest || '60') || 60
-          }],
-          equipment_ok: []
-        };
+  // Handle selecting an exercise from search results
+  const handleSelectExerciseForPlan = async (exercise: {
+    id: string;
+    name: string;
+    category: string;
+    equipment: string;
+    instructions: string[];
+  }) => {
+    if (searchingDayIndex === null) return;
 
-        updatedPlan.days![dayIndex].exercises.push(newExercise);
+    if (searchingDayIndex === -1) {
+      // Adding to workout tab
+      setExercises(prev => {
+        if (!prev.includes(exercise.name)) {
+          return [...prev, exercise.name];
+        }
+        return prev;
+      });
 
-        // Save to API
-        await savePlanChanges(updatedPlan);
+      // Close search modal
+      setShowExerciseSearch(false);
+      setSearchingDayIndex(null);
+      return;
+    }
 
-        // Also add to workout exercises if not already there
-        setExercises(prev => {
-          if (!prev.includes(exerciseName.trim())) {
-            return [...prev, exerciseName.trim()];
-          }
-          return prev;
-        });
-      }
+    // Adding to plan tab
+    if (!currentPlan || !currentPlan.days) return;
+
+    const target = prompt("Enter target muscles (optional):", exercise.category);
+    const load = prompt("Enter load (e.g., 'moderate', 'heavy'):");
+    const reps = prompt("Enter reps (e.g., '3x8-10'):");
+    const rest = prompt("Enter rest time in seconds:", "60");
+
+    if (exercise.name) {
+      const updatedPlan = { ...currentPlan };
+      const newExercise = {
+        name: exercise.name,
+        target: target?.trim() || exercise.category,
+        sets: [{
+          load: load?.trim() || '',
+          reps: reps?.trim() || '',
+          rest_sec: parseInt(rest || '60') || 60
+        }],
+        equipment_ok: [exercise.equipment],
+        // ExerciseDB validation fields
+        exercise_db_id: exercise.id,
+        exercise_db_name: exercise.name,
+        exercise_db_category: exercise.category,
+        exercise_db_equipment: exercise.equipment,
+        exercise_db_instructions: exercise.instructions,
+        is_validated: true
+      };
+
+      updatedPlan.days![searchingDayIndex].exercises.push(newExercise);
+
+      // Save to API
+      await savePlanChanges(updatedPlan);
+
+      // Also add to workout exercises if not already there
+      setExercises(prev => {
+        if (!prev.includes(exercise.name)) {
+          return [...prev, exercise.name];
+        }
+        return prev;
+      });
+
+      // Close search modal
+      setShowExerciseSearch(false);
+      setSearchingDayIndex(null);
     }
   };
 
@@ -1491,7 +1624,25 @@ export default function App() {
                       {day.exercises.map((exercise, exerciseIndex) => (
                         <div key={exerciseIndex} className="plan-exercise-card">
                           <div className="plan-exercise-header">
-                            <h5 className="plan-exercise-name">{exercise.name}</h5>
+                            <h5 className="plan-exercise-name">
+                              <span
+                                className={`exercise-name-text ${exercise.is_validated ? 'exercise-name--validated' : ''}`}
+                                onClick={() => exercise.is_validated && handleExerciseHelp(exercise.name)}
+                                title={exercise.is_validated ? "Click for exercise details" : "Custom exercise"}
+                              >
+                                {exercise.name}
+                              </span>
+                              {exercise.is_validated && (
+                                <span className="exercise-validation-badge" title="Validated with ExerciseDB - click for details">
+                                  ✅
+                                </span>
+                              )}
+                              {exercise.is_validated === false && (
+                                <span className="exercise-validation-badge exercise-validation-badge--invalid" title="Not found in ExerciseDB - custom exercise">
+                                  ⚠️
+                                </span>
+                              )}
+                            </h5>
                             <span className="plan-exercise-target">{exercise.target}</span>
                           </div>
                           <div className="plan-exercise-details">
@@ -1504,6 +1655,16 @@ export default function App() {
                                 </span>
                               </div>
                             ))}
+
+                            {/* ExerciseDB metadata */}
+                            {exercise.is_validated && exercise.exercise_db_category && (
+                              <div className="exercise-db-metadata">
+                                <span className="exercise-db-category">{exercise.exercise_db_category}</span>
+                                {exercise.exercise_db_equipment && (
+                                  <span className="exercise-db-equipment"> • {exercise.exercise_db_equipment}</span>
+                                )}
+                              </div>
+                            )}
                           </div>
                           <div className="plan-exercise-actions">
                             <button
@@ -1606,6 +1767,88 @@ export default function App() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Exercise Search Modal for Manual Plan Editing */}
+        {showExerciseSearch && (
+          <div className="exercise-search-modal-overlay" onClick={() => setShowExerciseSearch(false)}>
+            <div className="exercise-search-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="exercise-search-modal-header">
+                <h3 className="exercise-search-modal-title">
+                  {searchingDayIndex === -1 ? 'Add Exercise to Workout' : 'Add Exercise to Plan'}
+                </h3>
+                <button
+                  className="exercise-search-modal-close"
+                  onClick={() => setShowExerciseSearch(false)}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="exercise-search-modal-content">
+                <div className="exercise-search-input-container">
+                  <input
+                    type="text"
+                    className="exercise-search-input"
+                    placeholder="Type exercise name (e.g., 'bench press', 'squat')"
+                    value={exerciseSearchQuery}
+                    onChange={(e) => handleExerciseSearchChange(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+
+                {exerciseSearchResults.length > 0 && (
+                  <div className="exercise-search-results">
+                    <div className="exercise-search-results-header">
+                      <span className="exercise-search-results-count">
+                        {exerciseSearchResults.length} exercises found
+                      </span>
+                    </div>
+                    <div className="exercise-search-results-list">
+                      {exerciseSearchResults.map((exercise) => (
+                        <div
+                          key={exercise.id}
+                          className="exercise-search-result-item"
+                          onClick={() => handleSelectExerciseForPlan(exercise)}
+                        >
+                          <div className="exercise-search-result-name">{exercise.name}</div>
+                          <div className="exercise-search-result-details">
+                            <span className="exercise-search-result-category">{exercise.category}</span>
+                            <span className="exercise-search-result-equipment">{exercise.equipment}</span>
+                          </div>
+                          {exercise.instructions && exercise.instructions.length > 0 && (
+                            <div className="exercise-search-result-preview">
+                              {exercise.instructions[0].substring(0, 80)}...
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {exerciseSearchQuery && exerciseSearchResults.length === 0 && (
+                  <div className="exercise-search-no-results">
+                    <p>No exercises found for "{exerciseSearchQuery}"</p>
+                    <p className="exercise-search-tip">
+                      Try different keywords or browse by category
+                    </p>
+                  </div>
+                )}
+
+                {!exerciseSearchQuery && (
+                  <div className="exercise-search-tips">
+                    <h4>Search Tips:</h4>
+                    <ul>
+                      <li>Type exercise names like "bench press" or "squat"</li>
+                      <li>Use equipment names like "barbell" or "dumbbell"</li>
+                      <li>Try muscle groups like "chest" or "legs"</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

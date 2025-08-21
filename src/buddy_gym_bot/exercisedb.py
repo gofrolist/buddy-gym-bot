@@ -1,80 +1,237 @@
 """
 ExerciseDB client for enriching workout plans with exercise data.
+Now uses embedded local JSON data for instant performance.
 """
 
+import json
 import logging
+from pathlib import Path
 from typing import Any
-
-import httpx
 
 
 class ExerciseDBClient:
-    """Client for interacting with the ExerciseDB API."""
+    """Client for interacting with ExerciseDB data (now embedded locally)."""
 
     def __init__(self):
-        # Updated base URL to use www subdomain to avoid redirects
-        self.base_url = "https://www.exercisedb.dev/api/v1"
-        self.client = httpx.AsyncClient(
-            timeout=30.0,
-            follow_redirects=True,  # Enable redirect following
-        )
+        # Load exercises data from JSON file
+        self.exercises_data = self._load_exercises_data()
 
-    def _headers(self) -> dict[str, str]:
-        """Get headers for API requests."""
-        return {"Accept": "application/json", "User-Agent": "GymBuddyBot/1.0"}
-
-    async def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
-        """Search for exercises by name."""
+    def _load_exercises_data(self) -> list[dict[str, Any]]:
+        """Load exercises data from local JSON file."""
         try:
-            url = f"{self.base_url}/exercises"
-            params = {"name": query, "limit": limit}
-
-            response = await self.client.get(url, params=params, headers=self._headers())
-            response.raise_for_status()
-
-            data = response.json()
-            return data.get("data", [])
-
-        except httpx.HTTPStatusError as e:
-            logging.error("Exercise search failed: %s", e)
-            return []
+            data_file = Path(__file__).parent / "data" / "exercises.json"
+            with open(data_file, encoding="utf-8") as f:
+                return json.load(f)
         except Exception as e:
-            logging.exception("Unexpected error during exercise search: %s", e)
+            logging.error("Failed to load exercises data: %s", e)
             return []
 
-    async def map_plan_exercises(self, plan: dict[str, Any]) -> dict[str, Any]:
-        """Map exercise names in a workout plan to ExerciseDB data."""
-        if "exercises" not in plan:
-            return plan
+    def _load_muscles_data(self) -> list[dict[str, Any]]:
+        """Load muscles data from local JSON file."""
+        try:
+            data_file = Path(__file__).parent / "data" / "muscles.json"
+            with open(data_file, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logging.error("Failed to load muscles data: %s", e)
+            return []
 
-        mapped_exercises: list[dict[str, Any]] = []
-        for exercise in plan["exercises"]:
-            if isinstance(exercise, dict) and "name" in exercise:
-                exercise_name = exercise["name"]
-                # Search for the exercise
-                search_results = await self.search(exercise_name, limit=1)
+    def _load_equipments_data(self) -> list[dict[str, Any]]:
+        """Load equipment data from local JSON file."""
+        try:
+            data_file = Path(__file__).parent / "data" / "equipments.json"
+            with open(data_file, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logging.error("Failed to load equipment data: %s", e)
+            return []
 
-                if search_results:
-                    # Use the first result
-                    db_exercise = search_results[0]
-                    mapped_exercise = {
-                        **exercise,
-                        "exercise_db_id": db_exercise.get("id"),
-                        "exercise_db_name": db_exercise.get("name"),
-                        "exercise_db_category": db_exercise.get("category"),
-                        "exercise_db_equipment": db_exercise.get("equipment"),
-                        "exercise_db_instructions": db_exercise.get("instructions"),
-                    }
-                else:
-                    # Keep original exercise data if not found
-                    mapped_exercise = exercise
+    def _load_bodyparts_data(self) -> list[dict[str, Any]]:
+        """Load body parts data from local JSON file."""
+        try:
+            data_file = Path(__file__).parent / "data" / "bodyparts.json"
+            with open(data_file, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logging.error("Failed to load body parts data: %s", e)
+            return []
 
-                mapped_exercises.append(mapped_exercise)
+    def get_local_gif_path(self, exercise_id: str) -> str | None:
+        """Get local path to GIF file for an exercise."""
+        try:
+            gif_file = Path(__file__).parent / "data" / "media" / f"{exercise_id}.gif"
+            if gif_file.exists():
+                return str(gif_file)
+            return None
+        except Exception as e:
+            logging.error("Failed to get local GIF path: %s", e)
+            return None
+
+    def _search_exercises(
+        self, query: str, limit: int = 10, exact_match: bool = False
+    ) -> list[dict[str, Any]]:
+        """Search exercises by name with optional exact matching."""
+        if not query:
+            return []
+
+        query_lower = query.lower().strip()
+        results = []
+
+        for exercise in self.exercises_data:
+            exercise_name = exercise.get("name", "").lower().strip()
+
+            if exact_match:
+                # Exact match (case-insensitive)
+                if query_lower == exercise_name:
+                    results.append(exercise)
+                    break  # Only one exact match possible
             else:
-                mapped_exercises.append(exercise)
+                # Fuzzy search (substring)
+                if query_lower in exercise_name:
+                    results.append(exercise)
+                    if len(results) >= limit:
+                        break
 
-        return {**plan, "exercises": mapped_exercises}
+        return results
+
+    def _find_best_match(self, query: str) -> dict[str, Any] | None:
+        """Find the best matching exercise using multiple strategies."""
+        if not query:
+            return None
+
+        query_lower = query.lower().strip()
+
+        # Strategy 1: Exact match
+        exact_matches = self._search_exercises(query, exact_match=True)
+        if exact_matches:
+            return exact_matches[0]
+
+        # Strategy 2: Starts with match (most specific)
+        starts_with_matches = []
+        for exercise in self.exercises_data:
+            exercise_name = exercise.get("name", "").lower().strip()
+            if exercise_name.startswith(query_lower):
+                starts_with_matches.append(exercise)
+
+        if starts_with_matches:
+            # Return the shortest name (most specific match)
+            return min(starts_with_matches, key=lambda x: len(x.get("name", "")))
+
+        # Strategy 3: Contains match (least specific)
+        contains_matches = []
+        for exercise in self.exercises_data:
+            exercise_name = exercise.get("name", "").lower().strip()
+            if query_lower in exercise_name:
+                contains_matches.append(exercise)
+
+        if contains_matches:
+            # Return the shortest name (most specific match)
+            return min(contains_matches, key=lambda x: len(x.get("name", "")))
+
+        return None
+
+    # Removed search method - no longer needed
+    # We now use direct ID lookup instead of name-based search
+
+    # Removed validate_exercise and _calculate_match_quality - no longer needed
+    # We now use direct ID lookup instead of name validation
+
+    async def search_exercises_for_user(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Search exercises for user interface (manual editing)."""
+        try:
+            # Use the existing search function
+            results = self._search_exercises(query, limit)
+
+            # Transform to user-friendly format
+            user_results = []
+            for exercise in results:
+                exercise_id = exercise.get("exerciseId")
+                if exercise_id:
+                    user_results.append(
+                        {
+                            "id": exercise_id,
+                            "name": exercise.get("name"),
+                            "category": exercise.get("bodyParts", [""])[0]
+                            if exercise.get("bodyParts")
+                            else "",
+                            "equipment": exercise.get("equipments", [""])[0]
+                            if exercise.get("equipments")
+                            else "",
+                            "instructions": exercise.get("instructions", []),
+                            "target_muscles": exercise.get("targetMuscles", []),
+                            "body_parts": exercise.get("bodyParts", []),
+                            "equipments": exercise.get("equipments", []),
+                        }
+                    )
+
+            return user_results
+
+        except Exception as e:
+            logging.error(f"User exercise search failed: {e}")
+            return []
+
+    async def search_exercises_by_category(
+        self, category: str, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """Get exercises by body part category for user selection."""
+        try:
+            results = []
+            for exercise in self.exercises_data:
+                body_parts = exercise.get("bodyParts", [])
+                if category.lower() in [bp.lower() for bp in body_parts]:
+                    exercise_id = exercise.get("exerciseId")
+                    if exercise_id:
+                        results.append(
+                            {
+                                "id": exercise_id,
+                                "name": exercise.get("name"),
+                                "category": body_parts[0] if body_parts else "",
+                                "equipment": exercise.get("equipments", [""])[0]
+                                if exercise.get("equipments")
+                                else "",
+                                "instructions": exercise.get("instructions", []),
+                            }
+                        )
+                        if len(results) >= limit:
+                            break
+
+            return results
+
+        except Exception as e:
+            logging.error(f"Category search failed: {e}")
+            return []
+
+    async def search_exercises_by_equipment(
+        self, equipment: str, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """Get exercises by equipment type for user selection."""
+        try:
+            results = []
+            for exercise in self.exercises_data:
+                equipments = exercise.get("equipments", [])
+                if equipment.lower() in [eq.lower() for eq in equipments]:
+                    exercise_id = exercise.get("exerciseId")
+                    if exercise_id:
+                        results.append(
+                            {
+                                "id": exercise_id,
+                                "name": exercise.get("name"),
+                                "category": exercise.get("bodyParts", [""])[0]
+                                if exercise.get("bodyParts")
+                                else "",
+                                "equipment": equipments[0] if equipments else "",
+                                "instructions": exercise.get("instructions", []),
+                            }
+                        )
+                        if len(results) >= limit:
+                            break
+
+            return results
+
+        except Exception as e:
+            logging.error(f"Equipment search failed: {e}")
+            return []
 
     async def close(self):
-        """Close the HTTP client."""
-        await self.client.aclose()
+        """No need to close anything for local data."""
+        pass

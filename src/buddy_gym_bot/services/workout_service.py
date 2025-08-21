@@ -5,9 +5,8 @@ Service for workout plan creation and management.
 import logging
 from typing import Any
 
-from ..bot.openai_scheduling import generate_schedule
+from ..bot.openai_scheduling import generate_schedule, validate_and_enrich_exercises
 from ..db import repo
-from ..exercisedb import ExerciseDBClient
 
 
 class WorkoutService:
@@ -31,11 +30,7 @@ class WorkoutService:
                 return {"error": "Failed to generate workout plan"}
 
             # Enrich with ExerciseDB data
-            exercisedb = ExerciseDBClient()
-            try:
-                enriched_plan = await exercisedb.map_plan_exercises(plan)
-            finally:
-                await exercisedb.close()
+            enriched_plan = await validate_and_enrich_exercises(plan)
 
             # Save to database
             await repo.upsert_user_plan(user_id, enriched_plan)
