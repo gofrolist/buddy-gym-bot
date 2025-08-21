@@ -20,15 +20,25 @@ SYSTEM_PROMPT = (
     "When modifying an existing plan, preserve the current structure including days_per_week, "
     "exercise selection, and overall program design. Only change what is specifically requested. "
     "CRITICAL: You MUST use the file_search tool to find exercises from our ExerciseDB. "
-    "1. Use file_search to search for exercises matching the user's request "
-    "2. Extract the exercise_db_id from the search results "
-    "3. Include ONLY exercises found through file_search in your response "
-    "4. Return the exact exercise_db_id for each exercise in the plan "
-    "5. DO NOT invent exercise names or use exercises not found through file_search "
-    "6. DO NOT generate fake IDs like 'ex001', 'ex002' - use real IDs from search results "
-    "7. If you cannot find a suitable exercise through file_search, use a generic name like 'push-ups' "
-    "The file_search tool gives you access to our complete exercise database. "
-    "Always search first, then use the results."
+    "You CANNOT create a plan without using file_search first. "
+    "STEP-BY-STEP PROCESS: "
+    "1. BEFORE writing any JSON, use file_search to search for exercises "
+    "2. Search for common exercises like 'bench press', 'squat', 'deadlift', 'push-ups' "
+    "3. Extract the exercise_db_id from the search results "
+    "4. Use ONLY exercises found through file_search in your response "
+    "5. Return the exact exercise_db_id for each exercise in the plan "
+    "EXAMPLES OF WHAT TO DO: "
+    "- Search: 'bench press' → Get real ID from results → Use that ID "
+    "- Search: 'squat' → Get real ID from results → Use that ID "
+    "- Search: 'push-ups' → Get real ID from results → Use that ID "
+    "EXAMPLES OF WHAT NOT TO DO: "
+    "- DO NOT invent exercise names "
+    "- DO NOT generate fake IDs like 'ex001', 'ex002', 'GbltSq1', 'SpYC0Kp' "
+    "- DO NOT use placeholder IDs "
+    "- DO NOT skip the file_search step "
+    "REMEMBER: You MUST call file_search before creating any exercise plan. "
+    "If file_search fails, use generic exercise names like 'push-ups', 'squats', 'bench press' "
+    "but NEVER invent fake database IDs."
 )
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -331,6 +341,9 @@ async def generate_schedule(
             "include": ["file_search_call.results"],
         }
 
+        logging.info(f"OpenAI API payload: {json.dumps(payload, indent=2)}")
+        logging.info(f"Using vector store ID: {vector_store_id}")
+
         timeout = httpx.Timeout(connect=10.0, read=60.0, write=60.0, pool=60.0)
 
         # Use Responses API
@@ -359,6 +372,9 @@ async def generate_schedule(
                             if output.get("type") == "message":
                                 content = output.get("content", [{}])[0].get("text", "")
                                 break
+
+                    logging.info(f"OpenAI API response: {json.dumps(response_data, indent=2)}")
+                    logging.info(f"Extracted content: {content}")
 
                     if not content:
                         logging.error("No content found in Responses API response")
