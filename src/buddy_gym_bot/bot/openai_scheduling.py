@@ -24,8 +24,11 @@ SYSTEM_PROMPT = (
     "2. Extract the exercise_db_id from the search results "
     "3. Include ONLY exercises found through file_search in your response "
     "4. Return the exact exercise_db_id for each exercise in the plan "
-    "DO NOT invent exercise names or use exercises not found through file_search. "
-    "The file_search tool gives you access to our complete exercise database."
+    "5. DO NOT invent exercise names or use exercises not found through file_search "
+    "6. DO NOT generate fake IDs like 'ex001', 'ex002' - use real IDs from search results "
+    "7. If you cannot find a suitable exercise through file_search, use a generic name like 'push-ups' "
+    "The file_search tool gives you access to our complete exercise database. "
+    "Always search first, then use the results."
 )
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]

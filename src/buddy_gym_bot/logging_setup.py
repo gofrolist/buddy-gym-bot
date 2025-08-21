@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import traceback
 
 import httpx
@@ -7,6 +8,25 @@ import httpx
 from .config import SETTINGS
 
 _tasks: list[asyncio.Task[None]] = []
+
+
+class SensitiveDataFilter(logging.Filter):
+    """
+    Filter to remove sensitive data from log messages.
+    """
+
+    def filter(self, record):
+        if hasattr(record, "msg"):
+            # Filter out bot tokens from URLs
+            if isinstance(record.msg, str):
+                record.msg = re.sub(
+                    r"https://api\.telegram\.org/bot[^/\s]+",
+                    "https://api.telegram.org/bot<REDACTED>",
+                    record.msg,
+                )
+                # Also filter out other potential sensitive URLs
+                record.msg = re.sub(r"Bearer [a-zA-Z0-9\-_]+", "Bearer <REDACTED>", record.msg)
+        return True
 
 
 class TelegramErrorHandler(logging.Handler):
@@ -63,12 +83,26 @@ def setup_logging(level: int = logging.INFO) -> None:
     root = logging.getLogger()
     if root.handlers:
         return  # already configured
+
+    # Add sensitive data filter
+    sensitive_filter = SensitiveDataFilter()
+
     root.setLevel(level)
     fmt = logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s")
+
+    # Stream handler
     ch = logging.StreamHandler()
     ch.setFormatter(fmt)
+    ch.addFilter(sensitive_filter)
     root.addHandler(ch)
+
+    # Telegram handler
     tg = TelegramErrorHandler()
     tg.setLevel(logging.ERROR)
     tg.setFormatter(fmt)
+    tg.addFilter(sensitive_filter)
     root.addHandler(tg)
+
+    # Also filter httpx logging specifically
+    httpx_logger = logging.getLogger("httpx")
+    httpx_logger.addFilter(sensitive_filter)
