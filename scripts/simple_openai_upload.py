@@ -13,11 +13,12 @@ from openai import OpenAI
 
 load_dotenv()
 
+
 def upload_exercisedb_to_openai():
     """Upload ExerciseDB data to OpenAI and return file_id."""
     try:
         # Check if OpenAI API key is available
-        api_key = os.getenv('OPENAI_API_KEY')
+        api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             print("❌ OPENAI_API_KEY not found in environment")
             return None
@@ -35,36 +36,37 @@ def upload_exercisedb_to_openai():
 
         # Upload file to OpenAI
         print("📤 Uploading file to OpenAI...")
-        with open(data_file, 'rb') as f:
+        with open(data_file, "rb") as f:
             file_response = client.files.create(
                 file=f,
-                purpose="assistants"  # This allows file_search tool usage
+                purpose="assistants",  # This allows file_search tool usage
             )
 
         file_id = file_response.id
         print(f"✅ File uploaded successfully: {file_id}")
 
-        # Save file_id to local .env file for development
+        # Save vector_store_id to local .env file for development
         env_file = Path(".env")
-        env_content = f"\n# OpenAI ExerciseDB file ID (auto-updated)\nOPENAI_FILE_ID={file_id}\n"
+        env_content = f"\n# OpenAI ExerciseDB vector store ID (auto-updated)\nOPENAI_VECTOR_STORE_ID={file_id}\n"
 
         # Append to .env file
-        with open(env_file, 'a') as f:
+        with open(env_file, "a") as f:
             f.write(env_content)
 
-        print("💾 File ID added to .env file")
+        print("💾 Vector store ID added to .env file")
         print(f"📊 File size: {data_file.stat().st_size / 1024:.1f} KB")
 
         print("\n🌍 For production deployment, set this secret in Fly.io:")
-        print(f"   flyctl secrets set OPENAI_FILE_ID={file_id}")
+        print(f"   flyctl secrets set OPENAI_VECTOR_STORE_ID={file_id}")
         print("   # Or update your .env file manually:")
-        print(f"   # OPENAI_FILE_ID={file_id}")
+        print(f"   # OPENAI_VECTOR_STORE_ID={file_id}")
 
         return file_id
 
     except Exception as e:
         print(f"❌ Error uploading to OpenAI: {e}")
         return None
+
 
 def main():
     """Main function."""
@@ -84,6 +86,7 @@ def main():
     else:
         print("\n💥 Upload failed!")
         return 1
+
 
 if __name__ == "__main__":
     exit(main())

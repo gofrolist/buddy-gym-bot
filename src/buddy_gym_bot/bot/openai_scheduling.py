@@ -87,16 +87,16 @@ SCHEMA: dict[str, Any] = {
 }
 
 
-def get_openai_file_id() -> str | None:
-    """Get the OpenAI file_id from environment variable."""
-    file_id = os.getenv("OPENAI_FILE_ID")
-    if not file_id:
+def get_openai_vector_store_id() -> str | None:
+    """Get the OpenAI vector store ID from environment variable."""
+    vector_store_id = os.getenv("OPENAI_VECTOR_STORE_ID")
+    if not vector_store_id:
         logging.warning(
-            "OPENAI_FILE_ID environment variable not set. Run 'make upload-to-openai' first."
+            "OPENAI_VECTOR_STORE_ID environment variable not set. Run 'make upload-to-openai' first."
         )
         return None
 
-    return file_id
+    return vector_store_id
 
 
 async def validate_and_enrich_exercises(plan: dict[str, Any]) -> dict[str, Any]:
@@ -265,29 +265,6 @@ def deterministic_fallback(
     }
 
 
-def _extract_content_from_responses_api(response_data: dict) -> str:
-    """Extract content from OpenAI Responses API response."""
-    try:
-        # Look for the message content in the response
-        for output in response_data.get("output", []):
-            if output.get("type") == "message":
-                content = output.get("content", [])
-                for item in content:
-                    if item.get("type") == "output_text":
-                        return item.get("text", "")
-
-        # Fallback: try to find content in other formats
-        if "choices" in response_data:
-            return response_data["choices"][0]["message"]["content"]
-
-        logging.error("Could not extract content from Responses API response")
-        return ""
-
-    except Exception as e:
-        logging.error(f"Failed to extract content from Responses API: {e}")
-        return ""
-
-
 async def generate_schedule(
     text: str, tz: str = "UTC", base_plan: dict[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -329,26 +306,24 @@ async def generate_schedule(
         if base_plan:
             input_text = f"Existing plan: {json.dumps(base_plan)}\n\nApply this request: {text}\nSchema: {json.dumps(SCHEMA)}"
 
-        # Get OpenAI file_id for file_search tool
-        file_id = get_openai_file_id()
-        if not file_id:
-            logging.warning("No OpenAI file_id available, falling back to local ExerciseDB")
+        # Get OpenAI vector store ID for file_search tool
+        vector_store_id = get_openai_vector_store_id()
+        if not vector_store_id:
+            logging.warning("No OpenAI vector_store_id available, falling back to local ExerciseDB")
             # Fallback to local search if OpenAI file not available
             return deterministic_fallback(text, tz, base_plan)
 
+        # Use OpenAI Responses API with file_search tool
         payload = {
-            "model": "gpt-5-mini",  # Use model that supports v1/responses API with file_search tool
+            "model": "gpt-5-mini",
             "input": input_text,
-            "tools": [
-                {
-                    "type": "file_search",
-                    "file_ids": [file_id],  # Use simple file_id instead of vector_store_ids
-                }
-            ],
+            "tools": [{"type": "file_search", "vector_store_ids": [vector_store_id]}],
             "include": ["file_search_call.results"],
         }
 
         timeout = httpx.Timeout(connect=10.0, read=60.0, write=60.0, pool=60.0)
+
+        # Use Responses API
         async with httpx.AsyncClient(
             base_url="https://api.openai.com/v1",
             headers=headers,
@@ -368,7 +343,13 @@ async def generate_schedule(
                     response_data = r.json()
 
                     # Parse Responses API response format
-                    content = _extract_content_from_responses_api(response_data)
+                    content = ""
+                    if "output" in response_data:
+                        for output in response_data["output"]:
+                            if output.get("type") == "message":
+                                content = output.get("content", [{}])[0].get("text", "")
+                                break
+
                     if not content:
                         logging.error("No content found in Responses API response")
                         return deterministic_fallback(text, tz, base_plan)
@@ -387,6 +368,7 @@ async def generate_schedule(
                     # Validate and enrich exercises with ExerciseDB data
                     enriched_data = await validate_and_enrich_exercises(data)
                     return enriched_data
+
                 except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError) as e:
                     last_err = e
                     if i < 2:

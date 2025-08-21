@@ -14,6 +14,7 @@ DATA_DIR = REPO_DIR / "src" / "data"
 MEDIA_DIR = REPO_DIR / "media"
 OUTPUT_DIR = Path("src/buddy_gym_bot/data")
 
+
 def download_exercisedb_data() -> dict[str, list[Path] | Path] | None:
     """Clone ExerciseDB repository and extract all data."""
     print("Cloning ExerciseDB repository...")
@@ -30,7 +31,7 @@ def download_exercisedb_data() -> dict[str, list[Path] | Path] | None:
             ["git", "clone", "--depth", "1", EXERCISEDB_REPO, str(REPO_DIR)],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         print("Repository cloned successfully")
 
@@ -50,7 +51,7 @@ def download_exercisedb_data() -> dict[str, list[Path] | Path] | None:
             "data_files": data_files,
             "media_files": discovered_media_files,
             "data_dir": DATA_DIR,
-            "media_dir": MEDIA_DIR
+            "media_dir": MEDIA_DIR,
         }
 
     except subprocess.CalledProcessError as e:
@@ -60,6 +61,7 @@ def download_exercisedb_data() -> dict[str, list[Path] | Path] | None:
     except Exception as e:
         print(f"Failed to extract data: {e}")
         return None
+
 
 def copy_exercisedb_data(repo_data: dict[str, list[Path] | Path]) -> list[Path]:
     """Copy all ExerciseDB data files and media."""
@@ -94,6 +96,7 @@ def copy_exercisedb_data(repo_data: dict[str, list[Path] | Path]) -> list[Path]:
     print(f"Copied {len(copied_files)} files total")
     return copied_files
 
+
 def main() -> int:
     """Main function to clone repository and copy all ExerciseDB data."""
     print("ExerciseDB Complete Data Cloner")
@@ -118,6 +121,7 @@ def main() -> int:
         print("Cleaned up temporary repository")
 
     return 0
+
 
 if __name__ == "__main__":
     exit(main())

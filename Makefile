@@ -76,12 +76,12 @@ upload-to-openai:
 
 .PHONY: set-fly-secret
 set-fly-secret:
-	@if [ -z "$(shell grep '^OPENAI_FILE_ID=' .env | tail -1 | cut -d'=' -f2)" ]; then \
-		echo "❌ No OPENAI_FILE_ID found in .env file. Run 'make upload-to-openai' first."; \
+	@if [ -z "$(shell grep '^OPENAI_VECTOR_STORE_ID=' .env | tail -1 | cut -d'=' -f2)" ]; then \
+		echo "❌ No OPENAI_VECTOR_STORE_ID found in .env file. Run 'make upload-to-openai' first."; \
 		exit 1; \
 	fi
-	@echo "🔐 Setting OpenAI file_id as Fly.io secret..."
-	@flyctl secrets set OPENAI_FILE_ID=$$(grep '^OPENAI_FILE_ID=' .env | tail -1 | cut -d'=' -f2)
+	@echo "🔐 Setting OpenAI vector store ID as Fly.io secret..."
+	@flyctl secrets set OPENAI_VECTOR_STORE_ID=$$(grep '^OPENAI_VECTOR_STORE_ID=' .env | tail -1 | cut -d'=' -f2)
 	@echo "✅ Fly.io secret updated successfully!"
 
 .PHONY: update-all
