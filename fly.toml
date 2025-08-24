@@ -17,7 +17,7 @@ primary_region = 'lax'
   FF_EXERCISEDB = "true"
 
 [processes]
-  web = "uvicorn buddy_gym_bot.server.main:app --host 0.0.0.0 --port 8080 --loop uvloop --http httptools"
+  web = "uvicorn buddy_gym_bot.server.main:app --host 0.0.0.0 --port 8080"
   bot = "/app/.venv/bin/python -m buddy_gym_bot.bot.main"
 
 [[services]]

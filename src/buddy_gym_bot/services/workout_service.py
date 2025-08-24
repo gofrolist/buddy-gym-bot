@@ -49,41 +49,106 @@ class WorkoutService:
         reps: int,
         rpe: float | None = None,
         is_warmup: bool = False,
+        session_id: int | None = None,  # Allow reusing existing session
     ) -> dict[str, Any]:
         """Log a workout set - optimized for speed."""
         try:
-            # Use optimized single-transaction method for better performance
             from ..db import repo
 
             # Store canonical weight in kg and track input
             weight_kg = weight  # Assuming weight is already in kg
             input_weight = weight  # Store what user entered
 
-            session, set_data = await repo.start_session_and_append_set(
-                user_id=user_id,
-                exercise=exercise,
-                weight_kg=weight_kg,
-                input_weight=input_weight,
-                input_unit="kg",  # Default to kg for backward compatibility
-                reps=reps,
-                rpe=rpe,
-                is_warmup=is_warmup,
-                title="Quick Log",
-            )
+            if session_id:
+                # Add set to existing session
+                try:
+                    set_data = await repo.append_set(
+                        session_id=session_id,
+                        exercise=exercise,
+                        weight_kg=weight_kg,
+                        input_weight=input_weight,
+                        input_unit="kg",
+                        reps=reps,
+                        rpe=rpe,
+                        is_warmup=is_warmup,
+                        is_completed=True,
+                    )
 
-            return {
-                "session_id": session.id,
-                "set_id": set_data.id,
-                "exercise": exercise,
-                "weight": weight,
-                "reps": reps,
-                "rpe": rpe,
-                "is_warmup": is_warmup,
-            }
+                    return {
+                        "session_id": session_id,
+                        "set_id": set_data.id,
+                        "exercise": exercise,
+                        "weight": weight,
+                        "reps": reps,
+                        "rpe": rpe,
+                        "is_warmup": is_warmup,
+                    }
+                except Exception as e:
+                    logging.warning("Failed to append set to session %s: %s", session_id, e)
+                    # Fall back to creating a new session
+                    session_id = None
+
+            if not session_id:
+                # Create new session and add first set
+                try:
+                    session, set_data = await repo.start_session_and_append_set(
+                        user_id=user_id,
+                        exercise=exercise,
+                        weight_kg=weight_kg,
+                        input_weight=input_weight,
+                        input_unit="kg",
+                        reps=reps,
+                        rpe=rpe,
+                        is_warmup=is_warmup,
+                        title="Quick Log",
+                    )
+
+                    return {
+                        "session_id": session.id,
+                        "set_id": set_data.id,
+                        "exercise": exercise,
+                        "weight": weight,
+                        "reps": reps,
+                        "rpe": rpe,
+                        "is_warmup": is_warmup,
+                    }
+                except Exception as e:
+                    logging.error("Failed to create new session and append set: %s", e)
+                    raise
 
         except Exception as e:
             logging.exception("Failed to log workout set: %s", e)
             return {"error": f"Failed to log workout set: {e!s}"}
+
+    async def finish_workout_session(self, session_id: int) -> dict[str, Any]:
+        """Finish a specific workout session by updating the ended_at timestamp."""
+        try:
+            from datetime import UTC, datetime
+
+            from sqlalchemy import update
+
+            from ..db import repo
+            from ..db.models import WorkoutSession
+
+            # Update session end time
+            sessmaker = repo.get_session()
+            async with sessmaker() as s:
+                await s.execute(
+                    update(WorkoutSession)
+                    .where(WorkoutSession.id == session_id)
+                    .values(ended_at=datetime.now(UTC))
+                )
+                await s.commit()
+
+            return {
+                "success": True,
+                "session_id": session_id,
+                "message": "Workout session finished successfully",
+            }
+
+        except Exception as e:
+            logging.exception("Failed to finish workout session: %s", e)
+            return {"error": f"Failed to finish workout session: {e!s}"}
 
     def render_plan_message(self, plan: dict[str, Any]) -> str:
         """Render a workout plan as a formatted message."""

@@ -1,6 +1,6 @@
 """
 ExerciseDB client for enriching workout plans with exercise data.
-Now uses embedded local JSON data for instant performance.
+Now uses embedded local JSON data for instant performance and external media URLs.
 """
 
 import json
@@ -10,7 +10,7 @@ from typing import Any
 
 
 class ExerciseDBClient:
-    """Client for interacting with ExerciseDB data (now embedded locally)."""
+    """Client for interacting with ExerciseDB data (now embedded locally with external media)."""
 
     def __init__(self):
         # Load exercises data from JSON file
@@ -56,16 +56,23 @@ class ExerciseDBClient:
             logging.error("Failed to load body parts data: %s", e)
             return []
 
-    def get_local_gif_path(self, exercise_id: str) -> str | None:
-        """Get local path to GIF file for an exercise."""
+    def get_external_media_url(self, exercise_id: str) -> str | None:
+        """Get external media URL for an exercise from ExerciseDB."""
         try:
-            gif_file = Path(__file__).parent / "data" / "media" / f"{exercise_id}.gif"
-            if gif_file.exists():
-                return str(gif_file)
+            # Look up the exercise in our data
+            for exercise in self.exercises_data:
+                if exercise.get("exerciseId") == exercise_id:
+                    # Return the external ExerciseDB media URL
+                    return f"https://static.exercisedb.dev/media/{exercise_id}.gif"
             return None
         except Exception as e:
-            logging.error("Failed to get local GIF path: %s", e)
+            logging.error("Failed to get external media URL: %s", e)
             return None
+
+    def get_local_gif_path(self, exercise_id: str) -> str | None:
+        """Get local path to GIF file for an exercise (DEPRECATED - use get_external_media_url)."""
+        logging.warning("get_local_gif_path is deprecated. Use get_external_media_url instead.")
+        return self.get_external_media_url(exercise_id)
 
     def _search_exercises(
         self, query: str, limit: int = 10, exact_match: bool = False

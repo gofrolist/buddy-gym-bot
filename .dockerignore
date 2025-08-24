@@ -276,3 +276,6 @@ webapp/node_modules
 dist
 .env
 fly.toml
+
+# Exclude media files from Docker image (use external URLs instead)
+src/buddy_gym_bot/data/media/

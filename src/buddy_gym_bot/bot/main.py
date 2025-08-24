@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import signal
+import sys
+from datetime import UTC, datetime
 
 from aiogram import Bot, Dispatcher, Router
 from aiogram.client.default import DefaultBotProperties
@@ -33,6 +36,24 @@ router = Router()
 workout_service = WorkoutService()
 openai_service = OpenAIService()
 reminder_service = ReminderService()
+
+# Health check status
+_health_status = {"startup_time": None, "last_health_check": None, "status": "starting"}
+
+
+def get_health_status() -> dict:
+    """Get current health status."""
+    global _health_status
+    _health_status["last_health_check"] = datetime.now(UTC).isoformat()
+    return _health_status.copy()
+
+
+def update_health_status(status: str) -> None:
+    """Update health status."""
+    global _health_status
+    _health_status["status"] = status
+    if status == "healthy" and not _health_status["startup_time"]:
+        _health_status["startup_time"] = datetime.now(UTC).isoformat()
 
 
 @router.message(CommandStart(deep_link=True))
@@ -257,6 +278,7 @@ async def on_startup(bot: Bot) -> None:
 
         await repo.init_db()
         await apply_localized_commands(bot)
+        update_health_status("healthy")
         logging.info("Bot startup completed successfully")
     except Exception as e:
         logging.exception("Bot startup failed: %s", e)
@@ -266,7 +288,14 @@ async def on_startup(bot: Bot) -> None:
 async def on_shutdown(bot: Bot) -> None:
     """Shutdown routine: clean up resources."""
     try:
+        logging.info("Starting bot shutdown...")
         reminder_service.shutdown()
+
+        # Close bot session if it exists
+        if hasattr(bot, "session") and bot.session:
+            await bot.session.close()
+
+        update_health_status("shutting_down")
         logging.info("Bot shutdown completed successfully")
     except Exception as e:
         logging.exception("Bot shutdown failed: %s", e)
@@ -280,34 +309,131 @@ def create_dispatcher(bot: Bot) -> Dispatcher:
     dp = Dispatcher()
     dp.include_router(router)
     dp.startup.register(on_startup)
-    dp.shutdown.register(on_shutdown)
+
+    # Create a closure that captures the bot instance for shutdown
+    async def shutdown_handler() -> None:
+        await on_shutdown(bot)
+
+    dp.shutdown.register(shutdown_handler)
     return dp
 
 
+# Global shutdown flag
+_shutdown_requested = False
+
+
+async def graceful_shutdown(bot: Bot, dp: Dispatcher, sig_name: str = "unknown") -> None:
+    """Graceful shutdown handler."""
+    global _shutdown_requested
+    if _shutdown_requested:
+        logging.info("Shutdown already in progress, ignoring signal %s", sig_name)
+        return
+
+    _shutdown_requested = True
+    logging.info("Received shutdown signal: %s - starting graceful shutdown...", sig_name)
+
+    try:
+        # Cancel all running tasks except the current one
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        if tasks:
+            logging.info("Cancelling %d running tasks...", len(tasks))
+            for task in tasks:
+                task.cancel()
+
+            # Wait for tasks to complete with timeout
+            try:
+                await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=10.0)
+                logging.info("All tasks cancelled successfully")
+            except TimeoutError:
+                logging.warning("Some tasks did not complete within timeout")
+
+        # Shutdown bot and dispatcher
+        await on_shutdown(bot)
+        if hasattr(dp, "emit_shutdown"):
+            await dp.emit_shutdown()
+
+        logging.info("Graceful shutdown completed")
+
+    except Exception as e:
+        logging.exception("Error during graceful shutdown: %s", e)
+    finally:
+        # Force exit if we're still running
+        if not sys.platform.startswith("win"):
+            # On Unix-like systems, use os._exit to force shutdown
+            import os
+
+            os._exit(0)
+        else:
+            sys.exit(0)
+
+
 async def _run() -> None:
-    """Main bot run function."""
-    if SETTINGS.USE_WEBHOOK:
-        raise SystemExit("USE_WEBHOOK is enabled; polling is disabled")
+    """Main bot run function with improved signal handling."""
     if not SETTINGS.BOT_TOKEN:
         raise SystemExit("BOT_TOKEN is required")
 
     bot = Bot(SETTINGS.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = create_dispatcher(bot)
 
+    # Set up signal handlers for graceful shutdown
+    def signal_handler(sig_num, frame):
+        sig_name = signal.Signals(sig_num).name
+        logging.info("Received signal %s (%d)", sig_name, sig_num)
+        # Create task to handle shutdown gracefully
+        shutdown_task = asyncio.create_task(graceful_shutdown(bot, dp, sig_name))
+        # Store reference to prevent garbage collection
+        shutdown_task.add_done_callback(lambda t: None)
+
+    # Register signal handlers (Unix only)
+    if not sys.platform.startswith("win"):
+        for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP]:
+            signal.signal(sig, signal_handler)
+
+    startup_time = datetime.now(UTC)
+    logging.info("Bot starting at %s", startup_time.isoformat())
+
     try:
-        await dp.start_polling(bot)  # type: ignore
+        if SETTINGS.USE_WEBHOOK:
+            # In webhook mode, just keep the process alive
+            # The webhook will be handled by the FastAPI server
+            logging.info("Bot running in webhook mode - keeping process alive")
+            while not _shutdown_requested:
+                await asyncio.sleep(1)
+        else:
+            # In polling mode, start polling
+            logging.info("Bot starting in polling mode")
+            await dp.start_polling(bot, skip_updates=True)  # type: ignore
+
     except KeyboardInterrupt:
-        logging.info("Bot stopped by user")
+        logging.info("Bot stopped by KeyboardInterrupt")
+        await graceful_shutdown(bot, dp, "KeyboardInterrupt")
+    except asyncio.CancelledError:
+        logging.info("Bot stopped by CancelledError")
+        await graceful_shutdown(bot, dp, "CancelledError")
     except Exception as e:
-        logging.exception("Bot polling failed: %s", e)
+        logging.exception("Bot run failed: %s", e)
+        await graceful_shutdown(bot, dp, "Exception")
         raise
     finally:
-        await on_shutdown(bot)
+        if not _shutdown_requested:
+            await on_shutdown(bot)
 
 
 def main() -> None:
-    """Main entry point."""
-    asyncio.run(_run())
+    """Main entry point with proper exception handling."""
+    try:
+        # Since we require Python 3.12+, use asyncio.run directly
+        asyncio.run(_run())
+
+    except KeyboardInterrupt:
+        logging.info("Main process interrupted by user")
+        sys.exit(0)
+    except SystemExit:
+        logging.info("Main process exiting")
+        raise
+    except Exception as e:
+        logging.exception("Fatal error in main: %s", e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

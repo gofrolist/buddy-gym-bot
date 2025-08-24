@@ -1,21 +1,20 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Input } from "./components/ui";
+
+// Recent changes (2025-08-22):
+// - Removed "?" button from workout tab exercises (duplicated exercise name click functionality)
+// - Unified exercise editing behavior across workout and plan tabs using search modal
+// - Created handleExerciseEdit() function for consistent editing experience
+// - Simplified handleSelectExerciseForPlan() logic for better maintainability
 
 declare global {
   interface Window { Telegram: any }
 }
 
-interface Exercise {
-  id: string;
-  name: string;
-}
 
-interface SetData {
-  exercise: string;
-  weight: number;
-  reps: number;
-}
+
+
 
 interface WorkoutSet {
   id: string;
@@ -37,23 +36,12 @@ interface WorkoutPlan {
     weekday: string;
     time: string;
     focus: string;
-          exercises: {
-        name: string;
-        target: string;
-        sets: {
-          load?: string;
-          reps?: string;
-          rest_sec?: number;
-        }[];
-        equipment_ok?: string[];
-        // ExerciseDB validation fields
-        exercise_db_id?: string | null;
-        exercise_db_name?: string | null;
-        exercise_db_category?: string | null;
-        exercise_db_equipment?: string | null;
-        exercise_db_instructions?: string[] | null;
-        is_validated?: boolean;
-      }[];
+    exercises: {
+      name: string;
+      exercise_db_id: string;
+      sets: number;
+      reps: string;
+    }[];
   }[];
   weeks?: number;
   timezone?: string;
@@ -66,11 +54,14 @@ interface WorkoutHistory {
   duration: number;
   exercises: {
     name: string;
+    exercise_db_id?: string; // Add optional exercise_db_id for history
     sets: number;
     totalReps: number;
     maxWeight: number;
   }[];
 }
+
+
 
 type TabType = 'workout' | 'plan' | 'history';
 
@@ -124,10 +115,29 @@ function lbsToKg(lbs: number): number {
 
 function tgUser() {
   try {
-    return window.Telegram?.WebApp?.initDataUnsafe?.user;
-  } catch {
+    const user = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    console.log("tgUser() called, result:", user);
+    console.log("window.Telegram:", window.Telegram);
+    console.log("window.Telegram?.WebApp:", window.Telegram?.WebApp);
+    console.log("window.Telegram?.WebApp?.initDataUnsafe:", window.Telegram?.WebApp?.initDataUnsafe);
+    return user;
+  } catch (error) {
+    console.error("Error in tgUser():", error);
     return null;
   }
+}
+
+// API response normalization functions
+function getItems(payload: any): any[] {
+  if (!payload) return [];
+  if (Array.isArray(payload.items)) return payload.items;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.results)) return payload.results;
+  return [];
+}
+
+function isOk(payload: any): boolean {
+  return Boolean(payload?.success ?? payload?.ok ?? false);
 }
 
 export default function App() {
@@ -163,6 +173,7 @@ export default function App() {
   // Workout data - start with empty
   const [workoutSets, setWorkoutSets] = useState<WorkoutSet[]>([]);
   const [exercises, setExercises] = useState<string[]>([]);
+  const [exerciseDbIds, setExerciseDbIds] = useState<Record<string, string>>({});
 
   // Plan and history data
   const [currentPlan, setCurrentPlan] = useState<WorkoutPlan | null>(null);
@@ -172,7 +183,6 @@ export default function App() {
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(() => detectUnitSystem());
 
   // UI state
-  const [suggestions, setSuggestions] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -189,6 +199,33 @@ export default function App() {
     response: string;
     timestamp: string;
   }>>([]);
+
+  // Component to render exercise names as clickable links when they have exercise_db_id
+  const ExerciseName: React.FC<{
+    name: string;
+    exercise_db_id?: string;
+    className?: string;
+  }> = ({ name, exercise_db_id, className }) => {
+    if (exercise_db_id && exercise_db_id !== 'null' && exercise_db_id.trim() !== '') {
+      // Create a clickable span that shows exercise info in popup
+      return (
+        <span
+          className={`exercise-name-link ${className || ''}`}
+          title={`Click to view ${name} details`}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleExerciseHelpById(exercise_db_id, name)}
+          onClick={() => handleExerciseHelpById(exercise_db_id, name)}
+          style={{ cursor: 'pointer' }}
+        >
+          {name}
+        </span>
+      );
+    }
+
+    // Regular text if no valid exercise_db_id
+    return <span className={className}>{name}</span>;
+  };
 
   // Save workout state to localStorage
   const saveWorkoutState = useCallback(() => {
@@ -248,6 +285,14 @@ export default function App() {
 
   // Initialize app
   useEffect(() => {
+    console.log("App initialization started");
+    console.log("User object:", user);
+    console.log("User ID:", user?.id);
+    console.log("Telegram WebApp:", window.Telegram?.WebApp);
+
+    // ✅ Always try to restore first
+    loadWorkoutState();
+
     const lc = user?.language_code?.slice(0, 2) || "en";
     i18n.changeLanguage(lc);
 
@@ -255,22 +300,39 @@ export default function App() {
       window.Telegram?.WebApp?.expand?.();
     } catch {}
 
-    // Load initial data
-    fetchCurrentPlan();
-    fetchWorkoutHistory();
+    if (user?.id) {
+      console.log("User available, loading data...");
+      fetchCurrentPlan();
+      fetchWorkoutHistory();
+      return; // cleanup not needed here
+    } else {
+      console.log("No user ID available, will retry in 1 second...");
+      // Retry path without skipping the restore above
+      const retryTimer = setTimeout(() => {
+        console.log("Retrying to get user data...");
+        const retryUser = tgUser();
+        if (retryUser?.id) {
+          console.log("User data now available, loading data...");
+          fetchCurrentPlan();
+          fetchWorkoutHistory();
+        } else {
+          console.log("Still no user data after retry");
+        }
+      }, 1000);
 
-    // Load saved workout state
-    loadWorkoutState();
+      return () => clearTimeout(retryTimer);
+    }
   }, [user, i18n, loadWorkoutState]);
 
   // Auto-populate workout with plan exercises when plan is loaded
   useEffect(() => {
     if (currentPlan && currentPlan.days && currentPlan.days.length > 0) {
       // Get today's workout or first available workout
-      const today = new Date().toLocaleDateString('en-US', { weekday: 'short' });
+      const todayShort = new Date().toLocaleDateString('en-US', { weekday: 'short' }); // Mon
+      const todayLong = new Date().toLocaleDateString('en-US', { weekday: 'long' });  // Monday
       const todayWorkout = currentPlan.days.find(day =>
-        day.weekday === today
-      ) || currentPlan.days[0]; // Fallback to first day if today not found
+        day.weekday === todayShort || day.weekday === todayLong
+      ) ?? currentPlan.days[0]; // Fallback to first day if today not found
 
       if (todayWorkout && todayWorkout.exercises) {
         // Extract unique exercise names from the plan and clean them for API calls
@@ -281,6 +343,17 @@ export default function App() {
           return ex.name; // Keep original name for display
         });
         setExercises(planExercises);
+
+        // Update exerciseDbIds mapping for exercises loaded from plan
+        setExerciseDbIds(prev => {
+          const newMapping = { ...prev };
+          todayWorkout.exercises.forEach(ex => {
+            if (ex.exercise_db_id) {
+              newMapping[ex.name] = ex.exercise_db_id;
+            }
+          });
+          return newMapping;
+        });
 
         console.log("Auto-populated workout with plan exercises:", planExercises);
       }
@@ -310,12 +383,20 @@ export default function App() {
 
   // Fetch current workout plan
   const fetchCurrentPlan = async () => {
-    if (!user?.id) return;
+    console.log("fetchCurrentPlan called with user ID:", user?.id);
+    if (!user?.id) {
+      console.log("No user ID, returning early");
+      return;
+    }
 
     try {
+      console.log("Making API call to /api/v1/plan/current");
       const response = await fetch(`/api/v1/plan/current?tg_user_id=${user.id}`, {
         headers: { "Content-Type": "application/json" },
       });
+
+      console.log("API response status:", response.status);
+      console.log("API response ok:", response.ok);
 
       if (response.ok) {
         const data = await response.json();
@@ -326,6 +407,9 @@ export default function App() {
         } else {
           console.log("No plan data or API not successful");
         }
+      } else {
+        console.error("API call failed with status:", response.status);
+        console.error("Response text:", await response.text());
       }
     } catch (error) {
       console.error("Error fetching current plan:", error);
@@ -412,28 +496,7 @@ export default function App() {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Search exercises with debouncing
-  const queryExercises = useCallback(async (query: string) => {
-    if (!query.trim()) {
-      setSuggestions([]);
-      return;
-    }
 
-    try {
-      console.log("Querying exercises:", query);
-      const resp = await fetch(`/api/v1/exercises/search?q=${encodeURIComponent(query)}`);
-
-      if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-      }
-
-      const data = await resp.json();
-      setSuggestions(data.items || []);
-    } catch (error) {
-      console.error("Exercise search failed:", error);
-      setSuggestions([]);
-    }
-  }, []);
 
   // Handle workout controls
   const handlePauseResume = () => {
@@ -468,7 +531,7 @@ export default function App() {
     setShowExerciseSearch(true);
   };
 
-    // Clean exercise name for API search (keep equipment, just clean formatting)
+  // Clean exercise name for API search (keep equipment, just clean formatting)
   const cleanExerciseName = (exerciseName: string): string => {
     return exerciseName
       .replace(/\([^)]*\)/g, '') // Remove parentheses content
@@ -488,37 +551,6 @@ export default function App() {
     instructions: string[];
   }
 
-  // Extract key components from exercise name for targeted searches
-  const extractExerciseComponents = (exerciseName: string) => {
-    const name = exerciseName.toLowerCase();
-
-    // Common equipment types
-    const equipment = name.includes('barbell') ? 'barbell' :
-                     name.includes('dumbbell') ? 'dumbbell' :
-                     name.includes('cable') ? 'cable' :
-                     name.includes('machine') ? 'machine' :
-                     name.includes('band') ? 'band' :
-                     name.includes('smith') ? 'smith machine' : null;
-
-    // Common body parts
-    const bodyPart = name.includes('bench') || name.includes('chest') ? 'chest' :
-                     name.includes('squat') || name.includes('leg') ? 'upper legs' :
-                     name.includes('deadlift') || name.includes('back') ? 'back' :
-                     name.includes('row') ? 'back' :
-                     name.includes('press') ? 'shoulders' :
-                     name.includes('curl') ? 'upper arms' : null;
-
-    // Common muscles
-    const muscle = name.includes('bench') ? 'pectorals' :
-                   name.includes('squat') ? 'quadriceps' :
-                   name.includes('deadlift') ? 'glutes' :
-                   name.includes('row') ? 'lats' :
-                   name.includes('press') ? 'deltoids' :
-                   name.includes('curl') ? 'biceps' : null;
-
-    return { equipment, bodyPart, muscle };
-  };
-
   // Helper function to search exercises by general query
   const searchExercises = async (query: string): Promise<ExerciseDBData | null> => {
     try {
@@ -531,69 +563,6 @@ export default function App() {
       }
     } catch (error) {
       console.log(`Search failed for "${query}":`, error);
-    }
-    return null;
-  };
-
-  // Helper function to search by equipment
-  const searchByEquipment = async (equipment: string, exerciseName: string): Promise<ExerciseDBData | null> => {
-    try {
-      const response = await fetch(`https://www.exercisedb.dev/api/v1/equipments/${encodeURIComponent(equipment)}/exercises`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.success && data.data && data.data.length > 0) {
-          // Find best match from equipment-specific results
-          const bestMatch = data.data.find((ex: ExerciseDBData) =>
-            ex.name.toLowerCase().includes(exerciseName.toLowerCase()) ||
-            exerciseName.toLowerCase().includes(ex.name.toLowerCase())
-          );
-          return bestMatch || data.data[0];
-        }
-      }
-    } catch (error) {
-      console.log(`Equipment search failed for "${equipment}":`, error);
-    }
-    return null;
-  };
-
-  // Helper function to search by body part
-  const searchByBodyPart = async (bodyPart: string, exerciseName: string): Promise<ExerciseDBData | null> => {
-    try {
-      const response = await fetch(`https://www.exercisedb.dev/api/v1/bodyparts/${encodeURIComponent(bodyPart)}/exercises`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.success && data.data && data.data.length > 0) {
-          // Find best match from body part results
-          const bestMatch = data.data.find((ex: ExerciseDBData) =>
-            ex.name.toLowerCase().includes(exerciseName.toLowerCase()) ||
-            exerciseName.toLowerCase().includes(ex.name.toLowerCase())
-          );
-          return bestMatch || data.data[0];
-        }
-      }
-    } catch (error) {
-      console.log(`Body part search failed for "${bodyPart}":`, error);
-    }
-    return null;
-  };
-
-  // Helper function to search by muscle
-  const searchByMuscle = async (muscle: string, exerciseName: string): Promise<ExerciseDBData | null> => {
-    try {
-      const response = await fetch(`https://www.exercisedb.dev/api/v1/muscles/${encodeURIComponent(muscle)}/exercises`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.success && data.data && data.data.length > 0) {
-          // Find best match from muscle results
-          const bestMatch = data.data.find((ex: ExerciseDBData) =>
-            ex.name.toLowerCase().includes(exerciseName.toLowerCase()) ||
-            exerciseName.toLowerCase().includes(ex.name.toLowerCase())
-          );
-          return bestMatch || data.data[0];
-        }
-      }
-    } catch (error) {
-      console.log(`Muscle search failed for "${muscle}":`, error);
     }
     return null;
   };
@@ -617,15 +586,15 @@ export default function App() {
       });
 
       if (response.ok) {
-                const data = await response.json();
-        console.log(`Search results for "${cleanedName}":`, data);
+        const json = await response.json();
+        console.log(`Search results for "${cleanedName}":`, json);
 
-        if (data && data.ok && data.items && data.items.length > 0) {
+        if (isOk(json) && getItems(json).length > 0) {
           // Find the best match from the search results
-          let bestMatch = data.items[0];
+          let bestMatch = getItems(json)[0];
 
           // Try to find exact match first
-          const exactMatch = data.items.find((ex: ExerciseDBData) =>
+          const exactMatch = getItems(json).find((ex: ExerciseDBData) =>
             ex.name.toLowerCase().includes(cleanedName.toLowerCase()) ||
             cleanedName.toLowerCase().includes(ex.name.toLowerCase())
           );
@@ -634,8 +603,7 @@ export default function App() {
             bestMatch = exactMatch;
           }
 
-          // Use the correct field names from the API response
-                    // Show exercise data in modal with GIF
+          // Show exercise data in modal with GIF
           setExerciseModalData(bestMatch);
           setShowExerciseModal(true);
         } else {
@@ -646,9 +614,10 @@ export default function App() {
             const fallbackResponse = await fetch(`https://www.exercisedb.dev/api/v1/exercises/search?q=${encodeURIComponent(firstWord)}&limit=5`);
 
             if (fallbackResponse.ok) {
-              const fallbackData = await fallbackResponse.json();
-              if (fallbackData && fallbackData.ok && fallbackData.items && fallbackData.items.length > 0) {
-                                const fallbackExercise = fallbackData.items[0];
+              const fallbackJson = await fallbackResponse.json();
+              const items = getItems(fallbackJson);
+              if (items.length > 0) {
+                const fallbackExercise = items[0];
                 // Show fallback exercise in modal with GIF
                 setExerciseModalData(fallbackExercise);
                 setShowExerciseModal(true);
@@ -670,16 +639,101 @@ export default function App() {
     }
   };
 
-  // Handle exercise name editing (when clicking on exercise title)
-  const handleExerciseNameEdit = (exerciseName: string) => {
-    const newName = prompt(`Enter new name for "${exerciseName}":`, exerciseName);
-    if (newName && newName.trim() && newName !== exerciseName) {
-      setExercises(prev => prev.map(ex => ex === exerciseName ? newName.trim() : ex));
-      // Also update workout sets if they exist
-      setWorkoutSets(prev => prev.map(set =>
-        set.exercise === exerciseName ? { ...set, exercise: newName.trim() } : set
-      ));
+  // Handle exercise help by ID (for ExerciseName component)
+  const handleExerciseHelpById = async (exerciseDbId: string, exerciseName: string) => {
+    try {
+      // First try to fetch by ID from backend
+      try {
+        const byId = await fetch(`/api/v1/exercises/${encodeURIComponent(exerciseDbId)}`);
+        if (byId.ok) {
+          const exerciseData = await byId.json();
+          setExerciseModalData(exerciseData);
+          setShowExerciseModal(true);
+          return;
+        }
+      } catch {}
+
+      // Fallback to name search
+      const exerciseData = await searchExercises(exerciseName);
+      if (exerciseData) {
+        setExerciseModalData(exerciseData);
+        setShowExerciseModal(true);
+      } else {
+        // Fallback to a more general search if specific exercise not found
+        const fallbackResponse = await fetch(`https://www.exercisedb.dev/api/v1/exercises/search?q=${encodeURIComponent(exerciseName)}&limit=10`);
+        if (fallbackResponse.ok) {
+          const fallbackJson = await fallbackResponse.json();
+          const items = getItems(fallbackJson);
+          if (items.length > 0) {
+            setExerciseModalData(items[0]);
+            setShowExerciseModal(true);
+          } else {
+            alert(`No detailed information found for "${exerciseName}".\n\nThis exercise might be:\n• A custom exercise\n• Named differently in our database\n• A compound movement\n\nYou can search online for proper form and technique.`);
+          }
+        } else {
+          alert(`Could not fetch exercise information for ${exerciseName}.\n\nAPI returned: ${fallbackResponse.status} ${fallbackResponse.statusText}`);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching exercise help by ID:", error);
+      alert(`Could not fetch exercise information for ${exerciseName}.\n\nPlease check your internet connection or try again later.`);
     }
+  };
+
+    // Unified exercise editing function that works for all tabs
+  const handleExerciseEdit = (context: {
+    type: 'workout' | 'plan';
+    exerciseName: string;
+    dayIndex?: number;
+    exerciseIndex?: number;
+  }) => {
+        // Open exercise search modal with current exercise name pre-filled
+    setExerciseSearchQuery(context.exerciseName);
+
+    if (context.type === 'workout') {
+      setSearchingDayIndex(-1); // -1 indicates workout tab
+      setSearchingExerciseIndex(-1); // -1 indicates editing existing exercise in workout
+    } else {
+      // Plan tab
+      if (context.dayIndex !== undefined && context.exerciseIndex !== undefined) {
+        setSearchingDayIndex(context.dayIndex);
+        setSearchingExerciseIndex(context.exerciseIndex);
+      } else {
+        console.error('Plan editing requires dayIndex and exerciseIndex');
+        return;
+      }
+    }
+
+    setShowExerciseSearch(true);
+
+
+
+    // Search for the current exercise to show alternatives
+    if (context.exerciseName.trim().length >= 2) {
+      searchExercisesForPlan(context.exerciseName);
+    }
+  };
+
+  // Handle exercise name editing (when clicking on exercise title) - now uses unified function
+  const handleExerciseNameEdit = (exerciseName: string) => {
+    handleExerciseEdit({
+      type: 'workout',
+      exerciseName
+    });
+  };
+
+  // Handle editing exercise name in plan - now uses unified function
+  const handlePlanExerciseEdit = async (dayIndex: number, exerciseIndex: number) => {
+    if (!currentPlan || !currentPlan.days) return;
+
+    const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
+
+    handleExerciseEdit({
+      type: 'plan',
+      exerciseName: exercise.name,
+      dayIndex,
+      exerciseIndex
+    });
   };
 
   // Handle exercise deletion (when clicking on delete button)
@@ -688,6 +742,12 @@ export default function App() {
       setExercises(prev => prev.filter(ex => ex !== exerciseName));
       // Also remove workout sets for this exercise
       setWorkoutSets(prev => prev.filter(set => set.exercise !== exerciseName));
+      // Clean up exerciseDbIds mapping
+      setExerciseDbIds(prev => {
+        const newMapping = { ...prev };
+        delete newMapping[exerciseName];
+        return newMapping;
+      });
     }
   };
 
@@ -827,70 +887,14 @@ export default function App() {
     }
   };
 
-  // Handle editing exercise name in plan
-  const handlePlanExerciseEdit = async (dayIndex: number, exerciseIndex: number) => {
+  // Handle adding new exercise to a day with search
+  const handleAddPlanExercise = async (dayIndex: number) => {
     if (!currentPlan || !currentPlan.days) return;
 
-    const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
-    const newName = prompt(`Enter new name for "${exercise.name}":`, exercise.name);
-
-    if (newName && newName.trim() && newName !== exercise.name) {
-      // Try to find the exercise in our database to get validation data
-      try {
-        const response = await fetch(`/api/v1/exercises/search?q=${encodeURIComponent(newName.trim())}&limit=1`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.items && data.items.length > 0) {
-            const dbExercise = data.items[0];
-
-            // Update with ExerciseDB validation data
-            const updatedPlan = { ...currentPlan };
-            updatedPlan.days![dayIndex].exercises[exerciseIndex] = {
-              ...exercise,
-              name: newName.trim(),
-              exercise_db_id: dbExercise.id,
-              exercise_db_name: dbExercise.name,
-              exercise_db_category: dbExercise.category,
-              exercise_db_equipment: dbExercise.equipment,
-              exercise_db_instructions: dbExercise.instructions,
-              is_validated: true
-            };
-
-            // Save to API
-            await savePlanChanges(updatedPlan);
-          } else {
-            // Exercise not found in database - mark as custom
-            const updatedPlan = { ...currentPlan };
-            updatedPlan.days![dayIndex].exercises[exerciseIndex] = {
-              ...exercise,
-              name: newName.trim(),
-              exercise_db_id: null,
-              exercise_db_name: null,
-              exercise_db_category: null,
-              exercise_db_equipment: null,
-              exercise_db_instructions: null,
-              is_validated: false
-            };
-
-            // Save to API
-            await savePlanChanges(updatedPlan);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to validate exercise name:", error);
-
-        // Fallback to basic update without validation
-        const updatedPlan = { ...currentPlan };
-        updatedPlan.days![dayIndex].exercises[exerciseIndex].name = newName.trim();
-        await savePlanChanges(updatedPlan);
-      }
-
-      // Also update workout exercises if they match
-      setExercises(prev => prev.map(ex => ex === exercise.name ? newName.trim() : ex));
-      setWorkoutSets(prev => prev.map(set =>
-        set.exercise === exercise.name ? { ...set, exercise: newName.trim() } : set
-      ));
-    }
+    setSearchingDayIndex(dayIndex);
+    setExerciseSearchQuery("");
+    setExerciseSearchResults([]);
+    setShowExerciseSearch(true);
   };
 
   // Exercise search state for manual editing
@@ -904,6 +908,10 @@ export default function App() {
   }>>([]);
   const [showExerciseSearch, setShowExerciseSearch] = useState(false);
   const [searchingDayIndex, setSearchingDayIndex] = useState<number | null>(null);
+  const [searchingExerciseIndex, setSearchingExerciseIndex] = useState<number | null>(null);
+
+  // Debounced search for plan/exercise search
+  const debouncedSearch = useRef<number | null>(null);
 
   // Search exercises for manual plan editing
   const searchExercisesForPlan = async (query: string) => {
@@ -915,8 +923,12 @@ export default function App() {
     try {
       const response = await fetch(`/api/v1/exercises/search?q=${encodeURIComponent(query)}&limit=15`);
       if (response.ok) {
-        const data = await response.json();
-        setExerciseSearchResults(data.items || []);
+        const json = await response.json();
+        if (isOk(json) || getItems(json).length) {
+          setExerciseSearchResults(getItems(json));
+        } else {
+          setExerciseSearchResults([]);
+        }
       }
     } catch (error) {
       console.error("Exercise search failed:", error);
@@ -927,21 +939,12 @@ export default function App() {
   // Handle exercise search input change
   const handleExerciseSearchChange = (query: string) => {
     setExerciseSearchQuery(query);
-    if (query.trim().length >= 2) {
-      searchExercisesForPlan(query);
-    } else {
+    if (debouncedSearch.current) window.clearTimeout(debouncedSearch.current);
+    if (query.trim().length < 2) {
       setExerciseSearchResults([]);
+      return;
     }
-  };
-
-  // Handle adding new exercise to a day with search
-  const handleAddPlanExercise = async (dayIndex: number) => {
-    if (!currentPlan || !currentPlan.days) return;
-
-    setSearchingDayIndex(dayIndex);
-    setExerciseSearchQuery("");
-    setExerciseSearchResults([]);
-    setShowExerciseSearch(true);
+    debouncedSearch.current = window.setTimeout(() => searchExercisesForPlan(query), 250);
   };
 
   // Handle selecting an exercise from search results
@@ -955,64 +958,207 @@ export default function App() {
     if (searchingDayIndex === null) return;
 
     if (searchingDayIndex === -1) {
-      // Adding to workout tab
-      setExercises(prev => {
-        if (!prev.includes(exercise.name)) {
-          return [...prev, exercise.name];
-        }
-        return prev;
-      });
+      // Workout tab - either adding new exercise or editing existing one
+      if (searchingExerciseIndex === -1) {
+        // Editing existing exercise in workout
+        const oldExerciseName = exerciseSearchQuery; // This was the original name
+        setExercises(prev => prev.map(ex => ex === oldExerciseName ? exercise.name : ex));
+        setWorkoutSets(prev => prev.map(set =>
+          set.exercise === oldExerciseName ? { ...set, exercise: exercise.name } : set
+        ));
+      } else {
+        // Adding new exercise to workout
+        setExercises(prev => {
+          if (!prev.includes(exercise.name)) {
+            return [...prev, exercise.name];
+          }
+          return prev;
+        });
+        // Store the exercise_db_id for clickable functionality
+        setExerciseDbIds(prev => ({
+          ...prev,
+          [exercise.name]: exercise.id
+        }));
+      }
 
       // Close search modal
       setShowExerciseSearch(false);
       setSearchingDayIndex(null);
+      setSearchingExerciseIndex(null);
       return;
     }
 
-    // Adding to plan tab
+    // Plan tab - either adding new exercise or editing existing one
     if (!currentPlan || !currentPlan.days) return;
 
-    const target = prompt("Enter target muscles (optional):", exercise.category);
-    const load = prompt("Enter load (e.g., 'moderate', 'heavy'):");
-    const reps = prompt("Enter reps (e.g., '3x8-10'):");
-    const rest = prompt("Enter rest time in seconds:", "60");
+    if (searchingExerciseIndex !== null) {
+      // Editing existing exercise
+      const reps = prompt("Enter reps (e.g., '8', '10', '5-8'):", currentPlan.days[searchingDayIndex].exercises[searchingExerciseIndex].reps);
+      const sets = prompt("Enter number of sets:", currentPlan.days[searchingDayIndex].exercises[searchingExerciseIndex].sets.toString());
 
-    if (exercise.name) {
-      const updatedPlan = { ...currentPlan };
-      const newExercise = {
+      if (exercise.name && reps && sets) {
+        const updatedPlan = { ...currentPlan };
+        updatedPlan.days![searchingDayIndex].exercises[searchingExerciseIndex] = {
+          name: exercise.name,
+          exercise_db_id: exercise.id,
+          sets: parseInt(sets) || 3,
+          reps: reps.trim()
+        };
+
+        // Save to API
+        await savePlanChanges(updatedPlan);
+
+        // Also update workout exercises if they match
+        const oldExerciseName = currentPlan.days![searchingDayIndex].exercises[searchingExerciseIndex].name;
+        setExercises(prev => prev.map(ex => ex === oldExerciseName ? exercise.name : ex));
+        setWorkoutSets(prev => prev.map(set =>
+          set.exercise === oldExerciseName ? { ...set, exercise: exercise.name } : set
+        ));
+
+        // Update exerciseDbIds mapping for the new exercise name
+        setExerciseDbIds(prev => {
+          const newMapping = { ...prev };
+          // Remove old mapping
+          delete newMapping[oldExerciseName];
+          // Add new mapping
+          newMapping[exercise.name] = exercise.id;
+          return newMapping;
+        });
+
+        // Close search modal
+        setShowExerciseSearch(false);
+        setSearchingDayIndex(null);
+        setSearchingExerciseIndex(null);
+      }
+    } else {
+      // Adding new exercise
+      const reps = prompt("Enter reps (e.g., '8', '10', '5-8'):");
+      const sets = prompt("Enter number of sets:", "3");
+
+      if (exercise.name && reps && sets) {
+        const updatedPlan = { ...currentPlan };
+        const newExercise = {
+          name: exercise.name,
+          exercise_db_id: exercise.id,
+          sets: parseInt(sets) || 3,
+          reps: reps.trim()
+        };
+
+        updatedPlan.days![searchingDayIndex].exercises.push(newExercise);
+
+        // Save to API
+        await savePlanChanges(updatedPlan);
+
+        // Also add to workout exercises if not already there
+        setExercises(prev => {
+          if (!prev.includes(exercise.name)) {
+            return [...prev, exercise.name];
+          }
+          return prev;
+        });
+        // Store the exercise_db_id for clickable functionality
+        setExerciseDbIds(prev => ({
+          ...prev,
+          [exercise.name]: exercise.id
+        }));
+
+        // Close search modal
+        setShowExerciseSearch(false);
+        setSearchingDayIndex(null);
+        setSearchingExerciseIndex(null);
+      }
+    }
+  };
+
+  // Handle viewing exercise details from search results
+  const handleViewExerciseDetails = async (exercise: {
+    id: string;
+    name: string;
+    category: string;
+    equipment: string;
+    instructions: string[];
+  }) => {
+    try {
+      // Create exercise data using local search results
+      const exerciseData: ExerciseDBData = {
+        exerciseId: exercise.id,
         name: exercise.name,
-        target: target?.trim() || exercise.category,
-        sets: [{
-          load: load?.trim() || '',
-          reps: reps?.trim() || '',
-          rest_sec: parseInt(rest || '60') || 60
-        }],
-        equipment_ok: [exercise.equipment],
-        // ExerciseDB validation fields
-        exercise_db_id: exercise.id,
-        exercise_db_name: exercise.name,
-        exercise_db_category: exercise.category,
-        exercise_db_equipment: exercise.equipment,
-        exercise_db_instructions: exercise.instructions,
-        is_validated: true
+        gifUrl: "", // Will be populated from external API if available
+        targetMuscles: exercise.category ? [exercise.category] : [],
+        bodyParts: exercise.category ? [exercise.category] : [],
+        equipments: [exercise.equipment],
+        secondaryMuscles: [],
+        instructions: exercise.instructions
       };
 
-      updatedPlan.days![searchingDayIndex].exercises.push(newExercise);
-
-      // Save to API
-      await savePlanChanges(updatedPlan);
-
-      // Also add to workout exercises if not already there
-      setExercises(prev => {
-        if (!prev.includes(exercise.name)) {
-          return [...prev, exercise.name];
+      // Enhance the data mapping based on available fields
+      if (exercise.category) {
+        // Map category to more specific muscle groups
+        const categoryLower = exercise.category.toLowerCase();
+        if (categoryLower.includes('chest') || categoryLower.includes('pectoral')) {
+          exerciseData.targetMuscles = ['pectorals'];
+          exerciseData.bodyParts = ['chest'];
+        } else if (categoryLower.includes('back') || categoryLower.includes('lat')) {
+          exerciseData.targetMuscles = ['lats'];
+          exerciseData.bodyParts = ['back'];
+        } else if (categoryLower.includes('shoulder') || categoryLower.includes('deltoid')) {
+          exerciseData.targetMuscles = ['deltoids'];
+          exerciseData.bodyParts = ['shoulders'];
+        } else if (categoryLower.includes('arm') || categoryLower.includes('bicep') || categoryLower.includes('tricep')) {
+          exerciseData.targetMuscles = categoryLower.includes('bicep') ? ['biceps'] : ['triceps'];
+          exerciseData.bodyParts = ['upper arms'];
+        } else if (categoryLower.includes('leg') || categoryLower.includes('quad') || categoryLower.includes('hamstring')) {
+          exerciseData.targetMuscles = ['quadriceps', 'hamstrings'];
+          exerciseData.bodyParts = ['upper legs'];
+        } else if (categoryLower.includes('core') || categoryLower.includes('ab')) {
+          exerciseData.targetMuscles = ['abs'];
+          exerciseData.bodyParts = ['waist'];
         }
-        return prev;
-      });
+      }
 
-      // Close search modal
-      setShowExerciseSearch(false);
-      setSearchingDayIndex(null);
+      // Try to get only the GIF from external ExerciseDB API
+      try {
+        const response = await fetch(`https://www.exercisedb.dev/api/v1/exercises/search?q=${encodeURIComponent(exercise.name)}&limit=5`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.success && data.data && data.data.length > 0) {
+            // Find the best match by name similarity for GIF
+            const bestMatch = data.data.find((ex: any) =>
+              ex.name.toLowerCase() === exercise.name.toLowerCase() ||
+              ex.name.toLowerCase().includes(exercise.name.toLowerCase()) ||
+              exercise.name.toLowerCase().includes(ex.name.toLowerCase())
+            ) || data.data[0];
+
+            if (bestMatch && bestMatch.gifUrl) {
+              exerciseData.gifUrl = bestMatch.gifUrl;
+              console.log('Found GIF from external API:', bestMatch.gifUrl);
+            }
+          }
+        }
+      } catch (gifError) {
+        console.log('Could not fetch GIF from external API, using local data only:', gifError);
+      }
+
+      console.log('Using local exercise data with external GIF:', exerciseData);
+      setExerciseModalData(exerciseData);
+      setShowExerciseModal(true);
+    } catch (error) {
+      console.error("Failed to create exercise data:", error);
+      // Fallback: create basic exercise data from search result
+      const fallbackData: ExerciseDBData = {
+        exerciseId: exercise.id,
+        name: exercise.name,
+        gifUrl: "",
+        targetMuscles: exercise.category ? [exercise.category] : [],
+        bodyParts: exercise.category ? [exercise.category] : [],
+        equipments: [exercise.equipment],
+        secondaryMuscles: [],
+        instructions: exercise.instructions
+      };
+
+      console.log('Using fallback data due to error:', fallbackData);
+      setExerciseModalData(fallbackData);
+      setShowExerciseModal(true);
     }
   };
 
@@ -1030,74 +1176,39 @@ export default function App() {
     }
   };
 
-  // Handle editing exercise target in plan
-  const handlePlanExerciseTargetEdit = async (dayIndex: number, exerciseIndex: number) => {
+  // Handle editing a whole day in the plan
+  const handleEditDay = async (dayIndex: number) => {
     if (!currentPlan || !currentPlan.days) return;
 
-    const exercise = currentPlan.days[dayIndex].exercises[exerciseIndex];
-    const newTarget = prompt(`Enter new target for "${exercise.name}":`, exercise.target);
+    const day = currentPlan.days[dayIndex];
 
-    if (newTarget && newTarget.trim() && newTarget !== exercise.target) {
+    // Prompt for new day details
+    const newWeekday = prompt("Enter day of week:", day.weekday);
+    const newFocus = prompt("Enter focus area:", day.focus);
+    const newTime = prompt("Enter time:", day.time);
+
+    if (newWeekday && newFocus && newTime) {
       const updatedPlan = { ...currentPlan };
-      updatedPlan.days![dayIndex].exercises[exerciseIndex].target = newTarget.trim();
-
-      // Save to API
-      await savePlanChanges(updatedPlan);
-    }
-  };
-
-  // Handle editing set details in plan
-  const handlePlanSetEdit = async (dayIndex: number, exerciseIndex: number, setIndex: number) => {
-    if (!currentPlan || !currentPlan.days) return;
-
-    const set = currentPlan.days[dayIndex].exercises[exerciseIndex].sets[setIndex];
-    const newLoad = prompt(`Enter new load for set ${setIndex + 1}:`, set.load || '');
-    const newReps = prompt(`Enter new reps for set ${setIndex + 1}:`, set.reps || '');
-    const newRest = prompt(`Enter new rest time (seconds) for set ${setIndex + 1}:`, set.rest_sec?.toString() || '');
-
-    if (newLoad !== null || newReps !== null || newRest !== null) {
-      const updatedPlan = { ...currentPlan };
-      const targetSet = updatedPlan.days![dayIndex].exercises[exerciseIndex].sets[setIndex];
-
-      if (newLoad !== null && newLoad.trim()) targetSet.load = newLoad.trim();
-      if (newReps !== null && newReps.trim()) targetSet.reps = newReps.trim();
-      if (newRest !== null && newRest.trim()) targetSet.rest_sec = parseInt(newRest) || 0;
-
-      // Save to API
-      await savePlanChanges(updatedPlan);
-    }
-  };
-
-  // Handle adding new set to an exercise
-  const handleAddPlanSet = async (dayIndex: number, exerciseIndex: number) => {
-    if (!currentPlan || !currentPlan.days) return;
-
-    const load = prompt("Enter load (e.g., 'moderate', 'heavy'):");
-    const reps = prompt("Enter reps (e.g., '3x8-10'):");
-    const rest = prompt("Enter rest time in seconds:");
-
-    if (load?.trim() || reps?.trim()) {
-      const updatedPlan = { ...currentPlan };
-      const newSet = {
-        load: load?.trim() || '',
-        reps: reps?.trim() || '',
-        rest_sec: parseInt(rest || '60') || 60
+      updatedPlan.days![dayIndex] = {
+        ...day,
+        weekday: newWeekday.trim(),
+        focus: newFocus.trim(),
+        time: newTime.trim()
       };
 
-      updatedPlan.days![dayIndex].exercises[exerciseIndex].sets.push(newSet);
-
       // Save to API
       await savePlanChanges(updatedPlan);
     }
   };
 
-  // Handle deleting set from plan
-  const handleDeletePlanSet = async (dayIndex: number, exerciseIndex: number, setIndex: number) => {
+  // Handle deleting a whole day from the plan
+  const handleDeleteDay = async (dayIndex: number) => {
     if (!currentPlan || !currentPlan.days) return;
 
-    if (confirm(`Are you sure you want to delete set ${setIndex + 1}?`)) {
+    const day = currentPlan.days[dayIndex];
+    if (confirm(`Are you sure you want to delete the entire "${day.weekday}" day with ${day.exercises?.length || 0} exercises?`)) {
       const updatedPlan = { ...currentPlan };
-      updatedPlan.days![dayIndex].exercises[exerciseIndex].sets.splice(setIndex, 1);
+      updatedPlan.days!.splice(dayIndex, 1);
 
       // Save to API
       await savePlanChanges(updatedPlan);
@@ -1111,6 +1222,25 @@ export default function App() {
     setScheduleLoading(true);
 
     try {
+      console.log('Sending schedule request:', {
+        tg_user_id: user.id,
+        message: scheduleRequest.trim(),
+        context: {
+          current_plan: currentPlan ? {
+            program_name: currentPlan.program_name,
+            weeks: currentPlan.weeks,
+            days_per_week: currentPlan.days_per_week,
+            days_count: currentPlan.days ? currentPlan.days.length : 0
+          } : null,
+          workout_history_count: workoutHistory.length,
+          current_workout: {
+            active: isWorkoutActive,
+            duration: workoutDuration,
+            sets_count: workoutSets.length
+          }
+        }
+      });
+
       const response = await fetch('/api/v1/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1131,11 +1261,55 @@ export default function App() {
               sets_count: workoutSets.length
             }
           }
-        })
+        }),
+        ...(typeof AbortSignal?.timeout === "function"
+          ? { signal: AbortSignal.timeout(120000) }
+          : (() => {
+              const c = new AbortController();
+              setTimeout(() => c.abort(), 120000);
+              return { signal: c.signal };
+            })()
+        )
       });
 
+      console.log('Schedule response status:', response.status);
+      console.log('Schedule response headers:', Object.fromEntries(response.headers.entries()));
+
       if (response.ok) {
-        const data = await response.json();
+        let data;
+        try {
+          const responseText = await response.text();
+          console.log('Raw response text:', responseText);
+
+          if (!responseText.trim()) {
+            throw new Error('Empty response received');
+          }
+
+          data = JSON.parse(responseText);
+          console.log('Parsed schedule response data:', data);
+        } catch (parseError) {
+          console.error('Failed to parse response as JSON:', parseError);
+          alert(`Request sent but received invalid response format. Please try again.`);
+          return;
+        }
+
+        // Handle new error types from updated backend
+        if (data.success === false) {
+          // New format: structured error response
+          if (data.message) {
+            // Provide specific guidance for common error types
+            if (data.message.includes("Failed to extract workout constraints")) {
+              alert("Could not understand your workout request. Please be more specific about:\n\n• Days of the week (e.g., 'Monday, Wednesday, Friday')\n• Duration (e.g., '30 min', '45 min', or '1 hour')\n• Focus area (e.g., 'upper body', 'lower body', 'full body')\n\nExample: 'Create a 3-day plan for Monday, Wednesday, Friday with 30 min upper body workouts'");
+            } else if (data.message.includes("Failed to generate workout plan")) {
+              alert("Could not generate a workout plan. Please try rephrasing your request or be more specific about your requirements.");
+            } else {
+              alert(`Request failed: ${data.message}`);
+            }
+          } else {
+            alert("Request failed. Please try again.");
+          }
+          return;
+        }
 
         // Add to schedule history
         const newEntry = {
@@ -1150,26 +1324,138 @@ export default function App() {
 
         // If the response includes a new plan, update it
         if (data.plan) {
-          setCurrentPlan(data.plan);
-          // Also update the workout tab exercises if they exist
-          if (data.plan.days && data.plan.days.length > 0) {
-            const today = new Date().toLocaleDateString('en-US', { weekday: 'short' });
-            const todayWorkout = data.plan.days.find(day => day.weekday === today);
-            if (todayWorkout && todayWorkout.exercises) {
-              setExercises(todayWorkout.exercises.map(ex => ex.name));
+          console.log("Received new plan from schedule request:", data.plan);
+
+          // Validate plan structure
+          if (data.plan.days && Array.isArray(data.plan.days) && data.plan.days.length > 0) {
+            // Validate each day has the required structure
+            const validDays = data.plan.days.filter(day =>
+              day.weekday &&
+              day.exercises &&
+              Array.isArray(day.exercises) &&
+              day.exercises.length > 0
+            );
+
+            if (validDays.length > 0) {
+              console.log(`Plan validation successful: ${validDays.length} valid days found`);
+
+              // Create a sanitized plan object to prevent UI crashes
+              const sanitizedPlan = {
+                ...data.plan,
+                days: validDays.map(day => ({
+                  ...day,
+                  exercises: day.exercises.map(ex => ({
+                    name: ex.name || 'Unknown Exercise',
+                    exercise_db_id: ex.exercise_db_id || '',
+                    sets: typeof ex.sets === 'number' ? ex.sets : 3,
+                    reps: ex.reps || '8-12'
+                  }))
+                }))
+              };
+
+              setCurrentPlan(sanitizedPlan);
+
+              // Also update the workout tab exercises if they exist
+              const todayShort = new Date().toLocaleDateString('en-US', { weekday: 'short' }); // Mon
+              const todayLong = new Date().toLocaleDateString('en-US', { weekday: 'long' });  // Monday
+              const todayWorkout = validDays.find(day =>
+                day.weekday === todayShort || day.weekday === todayLong
+              );
+              if (todayWorkout && todayWorkout.exercises) {
+                setExercises(todayWorkout.exercises.map(ex => ex.name || 'Unknown Exercise'));
+
+                // Update exerciseDbIds mapping for exercises loaded from plan
+                setExerciseDbIds(prev => {
+                  const newMapping = { ...prev };
+                  todayWorkout.exercises.forEach(ex => {
+                    if (ex.exercise_db_id && ex.name) {
+                      newMapping[ex.name] = ex.exercise_db_id;
+                    }
+                  });
+                  return newMapping;
+                });
+              }
+
+              // Show success message with plan update
+              alert(`Request sent successfully!\n\nYour workout plan has been updated with ${validDays.length} workout days.`);
+            } else {
+              console.warn("Plan validation failed: no valid days found");
+              alert(`Request sent successfully!\n\nResponse: ${newEntry.response}\n\nNote: Plan data was incomplete.`);
             }
+          } else {
+            console.warn("Plan validation failed: invalid plan structure");
+            alert(`Request sent successfully!\n\nResponse: ${newEntry.response}\n\nNote: Plan data was incomplete.`);
+          }
+        } else {
+          console.log("No plan in schedule response:", data);
+          // Show success message without plan update
+          alert(`Request sent successfully!\n\nResponse: ${newEntry.response}`);
+        }
+      } else {
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          console.log('Error response data:', errorData);
+
+          // Handle new structured error format from updated backend
+          if (errorData.success === false && errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.detail) {
+            errorMessage = errorData.detail;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (parseError) {
+          console.log('Could not parse error response as JSON');
+        }
+
+        console.error('Schedule request failed:', errorMessage);
+
+        // Offer retry for certain error types
+        if (response.status >= 500) {
+          const retry = confirm(`Request failed: ${errorMessage}\n\nThis appears to be a server error. Would you like to try again?`);
+          if (retry) {
+            // Retry the request
+            setTimeout(() => handleScheduleRequest(), 2000);
+            return;
           }
         }
 
-        // Show success message
-        alert(`Request sent successfully!\n\nResponse: ${newEntry.response}`);
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        alert(`Failed to send request: ${errorData.message || response.statusText}`);
+        alert(`Failed to send request: ${errorMessage}`);
       }
     } catch (error) {
       console.error('Error sending schedule request:', error);
-      alert('Failed to send request. Please check your connection and try again.');
+      let errorMessage = 'Unknown error occurred';
+
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        errorMessage = 'Network error - please check your connection';
+      } else if (error instanceof Error) {
+        if (error.name === 'TimeoutError') {
+          errorMessage = 'Request timed out - the AI is taking longer than expected. Please try again.';
+        } else if (error.name === 'AbortError') {
+          errorMessage = 'Request was cancelled - please try again';
+        } else if (error.message.includes('Failed to extract workout constraints')) {
+          errorMessage = 'Could not understand your request. Please be more specific about days, duration, and focus.';
+        } else if (error.message.includes('Failed to generate workout plan')) {
+          errorMessage = 'Could not generate a plan. Please try rephrasing your request.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      // Show error with retry option for timeout errors
+      if (error instanceof Error && error.name === 'TimeoutError') {
+        const retry = confirm(`${errorMessage}\n\nWould you like to try again?`);
+        if (retry) {
+          // Retry the request after a short delay
+          setTimeout(() => handleScheduleRequest(), 2000);
+          return;
+        }
+      }
+
+      alert(`Failed to send request: ${errorMessage}`);
     } finally {
       setScheduleLoading(false);
     }
@@ -1360,7 +1646,12 @@ export default function App() {
             <div key={exerciseName} className="exercise-card">
               <div className="exercise-header">
                 <div className="exercise-title-container">
-                  <h3 className="exercise-title">{exerciseName}</h3>
+                  <h3 className="exercise-title">
+                    <ExerciseName
+                      name={exerciseName}
+                      exercise_db_id={planExercise?.exercise_db_id}
+                    />
+                  </h3>
                   <button
                     className="exercise-action exercise-action--edit"
                     onClick={() => handleExerciseNameEdit(exerciseName)}
@@ -1370,13 +1661,6 @@ export default function App() {
                   </button>
                 </div>
                 <div className="exercise-actions">
-                  <button
-                    className="exercise-action"
-                    onClick={() => handleExerciseHelp(exerciseName)}
-                    title="Get exercise help"
-                  >
-                    ?
-                  </button>
                   <button
                     className="exercise-action exercise-action--delete"
                     onClick={() => handleExerciseDelete(exerciseName)}
@@ -1390,17 +1674,11 @@ export default function App() {
               {/* Show plan info if available */}
               {planExercise && (
                 <div className="exercise-plan-info">
-                  {planExercise.sets && planExercise.sets.length > 0 && (
-                    <div className="plan-details">
-                      {planExercise.sets.map((set, index) => (
-                        <span key={index} className="plan-detail">
-                          {set.reps && `${set.reps} reps`}
-                          {set.rest_sec && set.reps && ' • '}
-                          {set.rest_sec && `${set.rest_sec}s rest`}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <div className="plan-details">
+                    <span className="plan-detail">
+                      {planExercise.sets} sets • {planExercise.reps}
+                    </span>
+                  </div>
                 </div>
               )}
 
@@ -1458,7 +1736,12 @@ export default function App() {
             <div key={exerciseName} className="exercise-card">
               <div className="exercise-header">
                 <div className="exercise-title-container">
-                  <h3 className="exercise-title">{exerciseName}</h3>
+                  <h3 className="exercise-title">
+                    <ExerciseName
+                      name={exerciseName}
+                      exercise_db_id={planExercise?.exercise_db_id || exerciseDbIds[exerciseName]}
+                    />
+                  </h3>
                   <button
                     className="exercise-action exercise-action--edit"
                     onClick={() => handleExerciseNameEdit(exerciseName)}
@@ -1468,13 +1751,6 @@ export default function App() {
                   </button>
                 </div>
                 <div className="exercise-actions">
-                  <button
-                    className="exercise-action"
-                    onClick={() => handleExerciseHelp(exerciseName)}
-                    title="Get exercise help"
-                  >
-                    ?
-                  </button>
                   <button
                     className="exercise-action exercise-action--delete"
                     onClick={() => handleExerciseDelete(exerciseName)}
@@ -1488,17 +1764,11 @@ export default function App() {
               {/* Show plan info if available */}
               {planExercise && (
                 <div className="exercise-plan-info">
-                  {planExercise.sets && planExercise.sets.length > 0 && (
-                    <div className="plan-details">
-                      {planExercise.sets.map((set, index) => (
-                        <span key={index} className="plan-detail">
-                          {set.reps && `${set.reps} reps`}
-                          {set.rest_sec && set.reps && ' • '}
-                          {set.rest_sec && `${set.rest_sec}s rest`}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <div className="plan-details">
+                    <span className="plan-detail">
+                      {planExercise.sets} sets • {planExercise.reps}
+                    </span>
+                  </div>
                 </div>
               )}
 
@@ -1593,18 +1863,112 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Exercise Search Modal for Workout Tab */}
+      {showExerciseSearch && searchingDayIndex === -1 && (
+        <div className="exercise-search-modal-overlay" onClick={() => {
+          setShowExerciseSearch(false);
+          setSearchingDayIndex(null);
+          setSearchingExerciseIndex(null);
+        }}>
+          <div className="exercise-search-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="exercise-search-modal-header">
+              <h3 className="exercise-search-modal-title">
+                {searchingExerciseIndex === -1 ? 'Edit Exercise in Workout' : 'Add Exercise to Workout'}
+              </h3>
+              <button
+                className="exercise-search-modal-close"
+                onClick={() => {
+                  setShowExerciseSearch(false);
+                  setSearchingDayIndex(null);
+                  setSearchingExerciseIndex(null);
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="exercise-search-modal-content">
+              <div className="exercise-search-input-container">
+                {searchingExerciseIndex === -1 && (
+                  <div className="exercise-edit-note">
+                    Currently editing: <strong>{exerciseSearchQuery}</strong>
+                  </div>
+                )}
+                <input
+                  type="text"
+                  className="exercise-search-input"
+                  placeholder="Type exercise name (e.g., 'bench press', 'squat')"
+                  value={exerciseSearchQuery}
+                  onChange={(e) => handleExerciseSearchChange(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              {exerciseSearchResults.length > 0 && (
+                <div className="exercise-search-results">
+                  <div className="exercise-search-results-header">
+                    <span className="exercise-search-results-count">
+                      {exerciseSearchResults.length} exercises found
+                    </span>
+                  </div>
+                  <div className="exercise-search-results-list">
+                    {exerciseSearchResults.map((exercise) => (
+                      <div
+                        key={exercise.id}
+                        className="exercise-search-result-item"
+                      >
+                        <div className="exercise-search-result-content" onClick={() => handleSelectExerciseForPlan(exercise)}>
+                          <div className="exercise-search-result-name">{exercise.name}</div>
+                          <div className="exercise-search-result-details">
+                            <span className="exercise-search-result-category">{exercise.category}</span>
+                            <span className="exercise-search-result-equipment">{exercise.equipment}</span>
+                          </div>
+                          {exercise.instructions && exercise.instructions.length > 0 && (
+                            <div className="exercise-search-result-preview">
+                              {exercise.instructions[0].substring(0, 80)}...
+                            </div>
+                          )}
+                        </div>
+                        <div className="exercise-search-result-actions">
+                          <button
+                            className="exercise-search-result-action exercise-search-result-action--details"
+                            onClick={() => handleViewExerciseDetails(exercise)}
+                            title="View exercise details"
+                          >
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {exerciseSearchQuery && exerciseSearchResults.length === 0 && (
+                <div className="exercise-search-no-results">
+                  <p>No exercises found for "{exerciseSearchQuery}"</p>
+                  <p className="exercise-search-tip">
+                    Try different keywords or browse by category
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 
     // Render current plan content
   const renderCurrentPlan = () => {
     console.log("Rendering plan, currentPlan:", currentPlan);
+    console.log("Plan days:", currentPlan?.days);
+    console.log("Plan exercises:", currentPlan?.days?.flatMap(day => day.exercises));
 
     return (
       <div className="plan-content">
-        <div className="plan-header">
-          <h2 className="plan-title">Current Workout Plan</h2>
-        </div>
+
 
         {currentPlan ? (
           <div className="plan-details">
@@ -1614,9 +1978,27 @@ export default function App() {
               currentPlan.days.map((day, dayIndex) => (
                 <div key={dayIndex} className="plan-day-card">
                   <div className="plan-day-header">
-                    <h4 className="plan-day-name">{day.weekday}</h4>
-                    <span className="plan-day-focus">{day.focus}</span>
-                    <span className="plan-day-time">{day.time}</span>
+                    <div className="plan-day-info">
+                      <h4 className="plan-day-name">{day.weekday}</h4>
+                      <span className="plan-day-focus">{day.focus}</span>
+                      <span className="plan-day-time">{day.time}</span>
+                    </div>
+                    <div className="plan-day-actions">
+                      <button
+                        className="plan-day-action plan-day-action--edit"
+                        onClick={() => handleEditDay(dayIndex)}
+                        title="Edit day"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        className="plan-day-action plan-day-action--delete"
+                        onClick={() => handleDeleteDay(dayIndex)}
+                        title="Delete day"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
 
                   {day.exercises && day.exercises.length > 0 ? (
@@ -1625,46 +2007,19 @@ export default function App() {
                         <div key={exerciseIndex} className="plan-exercise-card">
                           <div className="plan-exercise-header">
                             <h5 className="plan-exercise-name">
-                              <span
-                                className={`exercise-name-text ${exercise.is_validated ? 'exercise-name--validated' : ''}`}
-                                onClick={() => exercise.is_validated && handleExerciseHelp(exercise.name)}
-                                title={exercise.is_validated ? "Click for exercise details" : "Custom exercise"}
-                              >
-                                {exercise.name}
-                              </span>
-                              {exercise.is_validated && (
-                                <span className="exercise-validation-badge" title="Validated with ExerciseDB - click for details">
-                                  ✅
-                                </span>
-                              )}
-                              {exercise.is_validated === false && (
-                                <span className="exercise-validation-badge exercise-validation-badge--invalid" title="Not found in ExerciseDB - custom exercise">
-                                  ⚠️
-                                </span>
-                              )}
+                              <ExerciseName
+                                name={exercise.name}
+                                exercise_db_id={exercise.exercise_db_id}
+                                className="exercise-name-text"
+                              />
                             </h5>
-                            <span className="plan-exercise-target">{exercise.target}</span>
                           </div>
                           <div className="plan-exercise-details">
-                            {exercise.sets.map((set, setIndex) => (
-                              <div key={setIndex} className="plan-set-detail">
-                                <span className="plan-detail">
-                                  {set.load && `${set.load} load`}
-                                  {set.reps && ` • ${set.reps} reps`}
-                                  {set.rest_sec && ` • ${set.rest_sec}s rest`}
-                                </span>
-                              </div>
-                            ))}
-
-                            {/* ExerciseDB metadata */}
-                            {exercise.is_validated && exercise.exercise_db_category && (
-                              <div className="exercise-db-metadata">
-                                <span className="exercise-db-category">{exercise.exercise_db_category}</span>
-                                {exercise.exercise_db_equipment && (
-                                  <span className="exercise-db-equipment"> • {exercise.exercise_db_equipment}</span>
-                                )}
-                              </div>
-                            )}
+                            <div className="plan-set-detail">
+                              <span className="plan-detail">
+                                {exercise.sets} sets • {exercise.reps}
+                              </span>
+                            </div>
                           </div>
                           <div className="plan-exercise-actions">
                             <button
@@ -1673,13 +2028,6 @@ export default function App() {
                               title="Edit exercise name"
                             >
                               ✏️
-                            </button>
-                            <button
-                              className="plan-exercise-action plan-exercise-action--add"
-                              onClick={() => handleAddPlanExercise(dayIndex)}
-                              title="Add new exercise to this day"
-                            >
-                              +
                             </button>
                             <button
                               className="plan-exercise-action plan-exercise-action--delete"
@@ -1726,6 +2074,15 @@ export default function App() {
             <p className="schedule-request-description">
               Ask your trainer to modify your workout plan, add exercises, or adjust training parameters.
             </p>
+            <div className="schedule-request-tips">
+              <p><strong>Tips for better results:</strong></p>
+              <ul>
+                <li>Specify days clearly (e.g., "Monday, Wednesday, Friday")</li>
+                <li>Include duration (e.g., "30 min", "45 min", "1 hour")</li>
+                <li>Mention focus areas (e.g., "upper body", "lower body", "strength")</li>
+                <li>Example: "Create a 3-day plan for Mon/Wed/Fri with 30 min upper body workouts"</li>
+              </ul>
+            </div>
           </div>
 
           <div className="schedule-request-form">
@@ -1742,8 +2099,15 @@ export default function App() {
               onClick={handleScheduleRequest}
               disabled={!scheduleRequest.trim() || scheduleLoading}
             >
-              {scheduleLoading ? 'Sending...' : 'Send Request'}
+              {scheduleLoading ? 'Generating Plan...' : 'Send Request'}
             </button>
+
+            {scheduleLoading && (
+              <div className="schedule-loading-info">
+                <p>AI is analyzing your request and generating a workout plan...</p>
+                <p>This may take up to 2 minutes for complex requests.</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1771,17 +2135,27 @@ export default function App() {
           </div>
         )}
 
-        {/* Exercise Search Modal for Manual Plan Editing */}
-        {showExerciseSearch && (
-          <div className="exercise-search-modal-overlay" onClick={() => setShowExerciseSearch(false)}>
+
+
+        {/* Exercise Search Modal for Plan Tab */}
+        {showExerciseSearch && searchingDayIndex !== -1 && (
+          <div className="exercise-search-modal-overlay" onClick={() => {
+            setShowExerciseSearch(false);
+            setSearchingDayIndex(null);
+            setSearchingExerciseIndex(null);
+          }}>
             <div className="exercise-search-modal" onClick={(e) => e.stopPropagation()}>
               <div className="exercise-search-modal-header">
                 <h3 className="exercise-search-modal-title">
-                  {searchingDayIndex === -1 ? 'Add Exercise to Workout' : 'Add Exercise to Plan'}
+                  {searchingExerciseIndex !== null ? 'Edit Exercise in Plan' : 'Add Exercise to Plan'}
                 </h3>
                 <button
                   className="exercise-search-modal-close"
-                  onClick={() => setShowExerciseSearch(false)}
+                  onClick={() => {
+                    setShowExerciseSearch(false);
+                    setSearchingDayIndex(null);
+                    setSearchingExerciseIndex(null);
+                  }}
                 >
                   ✕
                 </button>
@@ -1789,6 +2163,11 @@ export default function App() {
 
               <div className="exercise-search-modal-content">
                 <div className="exercise-search-input-container">
+                  {searchingExerciseIndex !== null && currentPlan && currentPlan.days && (
+                    <div className="exercise-edit-note">
+                      Currently editing: <strong>{currentPlan.days[searchingDayIndex!].exercises[searchingExerciseIndex].name}</strong>
+                    </div>
+                  )}
                   <input
                     type="text"
                     className="exercise-search-input"
@@ -1811,18 +2190,28 @@ export default function App() {
                         <div
                           key={exercise.id}
                           className="exercise-search-result-item"
-                          onClick={() => handleSelectExerciseForPlan(exercise)}
                         >
-                          <div className="exercise-search-result-name">{exercise.name}</div>
-                          <div className="exercise-search-result-details">
-                            <span className="exercise-search-result-category">{exercise.category}</span>
-                            <span className="exercise-search-result-equipment">{exercise.equipment}</span>
-                          </div>
-                          {exercise.instructions && exercise.instructions.length > 0 && (
-                            <div className="exercise-search-result-preview">
-                              {exercise.instructions[0].substring(0, 80)}...
+                          <div className="exercise-search-result-content" onClick={() => handleSelectExerciseForPlan(exercise)}>
+                            <div className="exercise-search-result-name">{exercise.name}</div>
+                            <div className="exercise-search-result-details">
+                              <span className="exercise-search-result-category">{exercise.category}</span>
+                              <span className="exercise-search-result-equipment">{exercise.equipment}</span>
                             </div>
-                          )}
+                            {exercise.instructions && exercise.instructions.length > 0 && (
+                              <div className="exercise-search-result-preview">
+                                {exercise.instructions[0].substring(0, 80)}...
+                              </div>
+                            )}
+                          </div>
+                          <div className="exercise-search-result-actions">
+                            <button
+                              className="exercise-search-result-action exercise-search-result-action--details"
+                              onClick={() => handleViewExerciseDetails(exercise)}
+                              title="View exercise details"
+                            >
+                              👁️
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1835,17 +2224,6 @@ export default function App() {
                     <p className="exercise-search-tip">
                       Try different keywords or browse by category
                     </p>
-                  </div>
-                )}
-
-                {!exerciseSearchQuery && (
-                  <div className="exercise-search-tips">
-                    <h4>Search Tips:</h4>
-                    <ul>
-                      <li>Type exercise names like "bench press" or "squat"</li>
-                      <li>Use equipment names like "barbell" or "dumbbell"</li>
-                      <li>Try muscle groups like "chest" or "legs"</li>
-                    </ul>
                   </div>
                 )}
               </div>
@@ -1949,12 +2327,16 @@ export default function App() {
           <div className="history-list">
             {allSessions.map((session, sessionIndex) => {
               // Group sets by exercise within this session
-              const exerciseGroups: Record<string, { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }> = {};
+              const exerciseGroups: Record<string, { name: string; exercise_db_id?: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }> = {};
 
               session.sets.forEach(set => {
                 if (!exerciseGroups[set.exercise]) {
+                  // Try to find exercise_db_id from current plan
+                  const planExercise = currentPlan?.days?.flatMap(day => day.exercises)?.find(ex => ex.name === set.exercise);
+
                   exerciseGroups[set.exercise] = {
                     name: set.exercise,
+                    exercise_db_id: planExercise?.exercise_db_id,
                     sets: [],
                     totalReps: 0,
                     maxWeight: 0
@@ -1978,9 +2360,14 @@ export default function App() {
                   </div>
 
                   <div className="history-exercises">
-                    {Object.values(exerciseGroups).map((exercise: { name: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }, exerciseIndex) => (
+                    {Object.values(exerciseGroups).map((exercise: { name: string; exercise_db_id?: string; sets: WorkoutSet[]; totalReps: number; maxWeight: number }, exerciseIndex) => (
                       <div key={exerciseIndex} className="history-exercise">
-                        <span className="history-exercise-name">{exercise.name}</span>
+                        <span className="history-exercise-name">
+                          <ExerciseName
+                            name={exercise.name}
+                            exercise_db_id={exercise.exercise_db_id}
+                          />
+                        </span>
                         <span className="history-exercise-stats">
                           {exercise.sets.length} sets
                           {!exercise.sets.some(set => set.isBackendData) && (

@@ -7,8 +7,11 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
+import psutil
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -29,7 +32,73 @@ from .routes.schedule import router as r_schedule
 from .routes.share import router as r_share
 from .routes.workout import router as r_workout
 
-app = FastAPI(title="BuddyGym API", description="API for BuddyGym Telegram bot", version="0.2.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    global bot, dp
+    try:
+        # Initialize bot and dispatcher
+        bot = Bot(SETTINGS.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        dp = Dispatcher()
+        dp.include_router(tg_router)
+
+        await bot_on_startup(bot)
+        await dp.emit_startup(bot)
+        if SETTINGS.USE_WEBHOOK and SETTINGS.WEBHOOK_URL:
+            await bot.set_webhook(SETTINGS.WEBHOOK_URL, drop_pending_updates=True)
+            logging.info("Webhook set to %s", SETTINGS.WEBHOOK_URL)
+
+        # Update bot health status
+        try:
+            from ..bot.main import update_health_status
+
+            update_health_status("healthy")
+        except Exception:
+            pass
+
+        logging.info("FastAPI server startup completed")
+    except Exception as e:
+        logging.exception("FastAPI startup failed: %s", e)
+        raise
+
+    yield
+
+    # Shutdown
+    try:
+        # Update health status to shutting down
+        try:
+            from ..bot.main import update_health_status
+
+            update_health_status("shutting_down")
+        except Exception:
+            pass
+
+        if bot:
+            await bot_on_shutdown(bot)
+            try:
+                await bot.delete_webhook()
+            except Exception as e:
+                logging.warning("Failed to delete webhook: %s", e)
+
+            if hasattr(bot, "session") and bot.session:
+                await bot.session.close()
+
+        if dp:
+            await dp.emit_shutdown()
+
+        await close_db()
+        logging.info("FastAPI server shutdown completed")
+    except Exception as e:
+        logging.exception("FastAPI shutdown failed: %s", e)
+
+
+app = FastAPI(
+    title="BuddyGym API",
+    description="API for BuddyGym Telegram bot",
+    version=__import__("buddy_gym_bot").__version__,
+    lifespan=lifespan,
+)
 
 # CORS setup: allow webapp, Telegram, and web.telegram.org
 allowed: set[str] = set()
@@ -54,10 +123,9 @@ static_dir = os.path.join(os.getcwd(), "static", "webapp")
 if os.path.isdir(static_dir):
     app.mount("/webapp", StaticFiles(directory=static_dir, html=True), name="webapp")
 
-# Telegram bot setup
-bot = Bot(SETTINGS.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-dp = Dispatcher()
-dp.include_router(tg_router)
+# Telegram bot setup - will be initialized in startup
+bot: Bot | None = None
+dp: Dispatcher | None = None
 
 WEBHOOK_PATH = urlparse(SETTINGS.WEBHOOK_URL).path if SETTINGS.WEBHOOK_URL else "/bot"
 
@@ -65,6 +133,9 @@ WEBHOOK_PATH = urlparse(SETTINGS.WEBHOOK_URL).path if SETTINGS.WEBHOOK_URL else 
 @app.post(WEBHOOK_PATH)
 async def telegram_webhook(update: dict) -> dict:
     """Handle Telegram webhook updates."""
+    if not bot or not dp:
+        return {"ok": False, "error": "bot_not_initialized"}
+
     try:
         tg_update = Update.model_validate(update)
         await dp.feed_update(bot, tg_update)
@@ -72,35 +143,6 @@ async def telegram_webhook(update: dict) -> dict:
     except Exception as e:
         logging.exception("Webhook update processing failed: %s", e)
         return {"ok": False, "error": "update_processing_failed"}
-
-
-@app.on_event("startup")
-async def _startup() -> None:
-    """FastAPI startup: init bot and database."""
-    try:
-        await bot_on_startup(bot)
-        await dp.emit_startup(bot)
-        if SETTINGS.USE_WEBHOOK and SETTINGS.WEBHOOK_URL:
-            await bot.set_webhook(SETTINGS.WEBHOOK_URL, drop_pending_updates=True)
-            logging.info("Webhook set to %s", SETTINGS.WEBHOOK_URL)
-        logging.info("FastAPI server startup completed")
-    except Exception as e:
-        logging.exception("FastAPI startup failed: %s", e)
-        raise
-
-
-@app.on_event("shutdown")
-async def _shutdown() -> None:
-    """FastAPI shutdown: clean up bot resources."""
-    try:
-        await bot_on_shutdown(bot)
-        await bot.delete_webhook()
-        await dp.emit_shutdown()
-        await close_db()
-        await bot.session.close()
-        logging.info("FastAPI server shutdown completed")
-    except Exception as e:
-        logging.exception("FastAPI shutdown failed: %s", e)
 
 
 @app.exception_handler(Exception)
@@ -118,9 +160,50 @@ async def global_exc_handler(request: Request, exc: Exception) -> JSONResponse:
 @app.get("/healthz")
 async def healthz() -> dict:
     """
-    Health check endpoint.
+    Enhanced health check endpoint with system status.
     """
-    return {"ok": True, "status": "healthy"}
+    try:
+        # Get system metrics
+        memory = psutil.virtual_memory()
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+
+        # Get bot health status if available
+        bot_status = "unknown"
+        try:
+            from ..bot.main import get_health_status
+
+            bot_health = get_health_status()
+            bot_status = bot_health.get("status", "unknown")
+        except Exception:
+            bot_status = "unavailable"
+
+        # Check if we're healthy
+        is_healthy = (
+            memory.percent < 90  # Memory usage under 90%
+            and cpu_percent < 95  # CPU usage under 95%
+            and bot_status in ["healthy", "starting"]
+        )
+
+        return {
+            "ok": is_healthy,
+            "status": "healthy" if is_healthy else "degraded",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "system": {
+                "memory_percent": round(memory.percent, 1),
+                "memory_available_mb": round(memory.available / 1024 / 1024, 1),
+                "cpu_percent": round(cpu_percent, 1),
+            },
+            "bot": {"status": bot_status},
+        }
+
+    except Exception as e:
+        logging.exception("Health check failed: %s", e)
+        return {
+            "ok": False,
+            "status": "error",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "error": str(e),
+        }
 
 
 @app.get("/")

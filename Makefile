@@ -12,12 +12,13 @@ help:
 	@echo "  precommit      - Run pre-commit on all files"
 	@echo "  build          - Build Docker image"
 	@echo "  deploy         - Deploy to Fly using GHCR image (requires FLY_API_TOKEN)"
-	@echo "  deploy-infra   - Setup and deploy Postgres and Redis"
 	@echo "  update-exercises - Clone ExerciseDB repo and copy all data + GIFs"
-	@echo "  upload-to-openai - Upload ExerciseDB data to OpenAI and update .env file"
-	@echo "  set-fly-secret - Set OpenAI file_id as Fly.io secret (requires flyctl)"
+	@echo "  upload-minified - Minify and upload ExerciseDB data to OpenAI"
+	@echo "  set-fly-secret - Set OPENAI_VECTOR_STORE_ID as Fly.io secret"
+	@echo "  set-openai-file-id - Set OPENAI_FILE_ID as Fly.io secret"
+	@echo "  set-all-openai-secrets - Set all OpenAI secrets in Fly.io"
 	@echo "  update-all     - Update ExerciseDB data and upload to OpenAI"
-	@echo "  deploy-openai  - Update ExerciseDB data, upload to OpenAI, and set Fly.io secret"
+	@echo "  deploy-openai  - Update ExerciseDB data, upload to OpenAI, and set Fly.io secrets"
 
 .PHONY: sync
 sync:
@@ -58,39 +59,51 @@ build:
 deploy:
 	flyctl deploy --image $(IMAGE) --remote-only
 
-.PHONY: deploy-infra
-deploy-infra:
-	flyctl volumes create pg_data --region $(REGION) --size 3 --yes || true
-	flyctl launch --name buddy-gym-postgres --config infra/postgres/fly.toml
-	flyctl deploy -c infra/postgres/fly.toml --remote-only
-	flyctl volumes create redis_data --region $(REGION) --size 1 --yes || true
-	flyctl deploy -c infra/redis/fly.toml --remote-only
-
 .PHONY: update-exercises
 update-exercises:
 	uv run python scripts/download_exercisedb.py
 
-.PHONY: upload-to-openai
-upload-to-openai:
-	uv run python scripts/simple_openai_upload.py
+upload-minified:
+	@echo "Minifying and uploading ExerciseDB data to OpenAI..."
+	@uv run python scripts/simple_openai_upload.py
 
 .PHONY: set-fly-secret
 set-fly-secret:
 	@if [ -z "$(shell grep '^OPENAI_VECTOR_STORE_ID=' .env | tail -1 | cut -d'=' -f2)" ]; then \
-		echo "❌ No OPENAI_VECTOR_STORE_ID found in .env file. Run 'make upload-to-openai' first."; \
+		echo "❌ No OPENAI_VECTOR_STORE_ID found in .env file. Run 'make upload-minified' first."; \
 		exit 1; \
 	fi
 	@echo "🔐 Setting OpenAI vector store ID as Fly.io secret..."
 	@flyctl secrets set OPENAI_VECTOR_STORE_ID=$$(grep '^OPENAI_VECTOR_STORE_ID=' .env | tail -1 | cut -d'=' -f2)
-	@echo "✅ Fly.io secret updated successfully!"
+	@echo "✅ OPENAI_VECTOR_STORE_ID Fly.io secret updated successfully!"
+
+.PHONY: set-openai-file-id
+set-openai-file-id:
+	@if [ -z "$(shell grep '^OPENAI_FILE_ID=' .env | tail -1 | cut -d'=' -f2)" ]; then \
+		echo "❌ No OPENAI_FILE_ID found in .env file."; \
+		exit 1; \
+	fi
+	@echo "🔐 Setting OpenAI file ID as Fly.io secret..."
+	@flyctl secrets set OPENAI_FILE_ID=$$(grep '^OPENAI_FILE_ID=' .env | tail -1 | cut -d'=' -f2)
+	@echo "✅ OPENAI_FILE_ID Fly.io secret updated successfully!"
+
+.PHONY: set-all-openai-secrets
+set-all-openai-secrets: set-fly-secret
+	@echo "🔐 Setting all OpenAI secrets in Fly.io..."
+	@if [ -n "$(shell grep '^OPENAI_FILE_ID=' .env | tail -1 | cut -d'=' -f2)" ]; then \
+		$(MAKE) set-openai-file-id; \
+	else \
+		echo "ℹ️  No OPENAI_FILE_ID found, skipping..."; \
+	fi
+	@echo "✅ All OpenAI secrets updated in Fly.io!"
 
 .PHONY: update-all
 update-all: update-exercises upload-to-openai
 	@echo "✅ Updated ExerciseDB data and uploaded to OpenAI"
 
 .PHONY: deploy-openai
-deploy-openai: update-exercises upload-to-openai set-fly-secret
+deploy-openai: upload-minified set-all-openai-secrets
 	@echo "🚀 Complete OpenAI deployment completed!"
 	@echo "   • ExerciseDB data updated"
-	@echo "   • File uploaded to OpenAI"
-	@echo "   • Fly.io secret updated"
+	@echo "   • File minified and uploaded to OpenAI"
+	@echo "   • All Fly.io secrets updated"

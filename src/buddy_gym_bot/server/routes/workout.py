@@ -30,34 +30,51 @@ async def log_workout(req: WorkoutRequest) -> dict[str, Any]:
     """Log a workout set."""
     try:
         # Ensure user exists
-        user = await repo.upsert_user(
-            req.tg_user_id, handle=None, lang=None
-        )  # Changed from req.tg_id
+        user = await repo.upsert_user(req.tg_user_id, handle=None, lang=None)
 
-        # Create workout session
-        session = await repo.start_session(user.id, title="Web Log")
+        # Check if user has an active session (within last 2 hours)
+        active_session = await repo.get_active_session(user.id)
 
-        # Log the set with single-unit storage and input tracking
-        input_weight = req.weight_kg  # Store what user entered
+        if active_session:
+            # Add set to existing session
+            set_data = await repo.append_set(
+                session_id=active_session.id,
+                exercise=req.exercise,
+                weight_kg=req.weight_kg,
+                input_weight=req.weight_kg,
+                input_unit="kg",
+                reps=req.reps,
+                rpe=req.rpe,
+                is_warmup=req.is_warmup,
+                is_completed=req.is_completed,
+            )
+            session_id = active_session.id
+        else:
+            # Create new workout session
+            session = await repo.start_session(user.id, title="Web Log")
+            session_id = session.id
 
-        set_data = await repo.append_set(
-            session_id=session.id,
-            exercise=req.exercise,
-            weight_kg=req.weight_kg,
-            input_weight=input_weight,
-            input_unit="kg",  # Default to kg for backward compatibility
-            reps=req.reps,
-            rpe=req.rpe,
-            is_warmup=req.is_warmup,
-            is_completed=req.is_completed,
-        )
+            # Log the set with single-unit storage and input tracking
+            input_weight = req.weight_kg  # Store what user entered
+
+            set_data = await repo.append_set(
+                session_id=session.id,
+                exercise=req.exercise,
+                weight_kg=req.weight_kg,
+                input_weight=input_weight,
+                input_unit="kg",  # Default to kg for backward compatibility
+                reps=req.reps,
+                rpe=req.rpe,
+                is_warmup=req.is_warmup,
+                is_completed=req.is_completed,
+            )
 
         # Handle referral fulfillment
-        await repo.fulfil_referral_for_invitee(req.tg_user_id)  # Changed from req.tg_id
+        await repo.fulfil_referral_for_invitee(req.tg_user_id)
 
         return {
             "success": True,
-            "session_id": session.id,
+            "session_id": session_id,
             "set_id": set_data.id,
             "message": f"Logged {req.exercise}: {req.weight_kg}kg x {req.reps} reps",
         }
@@ -77,51 +94,65 @@ async def get_workout_history(
         user = await repo.upsert_user(tg_user_id, handle=None, lang=None)
 
         # Get workout sessions with sets
-        sessions = await repo.get_user_sessions(user.id)
+        try:
+            sessions = await repo.get_user_sessions(user.id)
+        except Exception as db_error:
+            logging.warning("Database error fetching sessions for user %s: %s", user.id, db_error)
+            # Return empty history instead of failing completely
+            return {"success": True, "history": []}
 
         history = []
         for session in sessions:
-            if session.sets:  # Only include sessions with sets
-                # Group sets by exercise
-                exercise_stats = {}
-                for set_row in session.sets:
-                    if set_row.exercise not in exercise_stats:
-                        exercise_stats[set_row.exercise] = {
-                            "sets": 0,
-                            "totalReps": 0,
-                            "maxWeight": 0,
+            try:
+                if session.sets:  # Only include sessions with sets
+                    # Group sets by exercise
+                    exercise_stats = {}
+                    for set_row in session.sets:
+                        if set_row.exercise not in exercise_stats:
+                            exercise_stats[set_row.exercise] = {
+                                "sets": 0,
+                                "totalReps": 0,
+                                "maxWeight": 0,
+                            }
+
+                        exercise_stats[set_row.exercise]["sets"] += 1
+                        exercise_stats[set_row.exercise]["totalReps"] += set_row.reps
+                        exercise_stats[set_row.exercise]["maxWeight"] = max(
+                            exercise_stats[set_row.exercise]["maxWeight"], set_row.weight_kg
+                        )
+
+                    # Convert to list format
+                    exercises = [
+                        {
+                            "name": exercise,
+                            "sets": stats["sets"],
+                            "totalReps": stats["totalReps"],
+                            "maxWeight": stats["maxWeight"],
                         }
+                        for exercise, stats in exercise_stats.items()
+                    ]
 
-                    exercise_stats[set_row.exercise]["sets"] += 1
-                    exercise_stats[set_row.exercise]["totalReps"] += set_row.reps
-                    exercise_stats[set_row.exercise]["maxWeight"] = max(
-                        exercise_stats[set_row.exercise]["maxWeight"], set_row.weight_kg
+                    # Calculate duration
+                    duration = 0
+                    if session.ended_at and session.started_at:
+                        duration = int((session.ended_at - session.started_at).total_seconds())
+
+                    history.append(
+                        {
+                            "id": str(session.id),
+                            "date": session.started_at.isoformat(),
+                            "duration": duration,
+                            "exercises": exercises,
+                        }
                     )
-
-                # Convert to list format
-                exercises = [
-                    {
-                        "name": exercise,
-                        "sets": stats["sets"],
-                        "totalReps": stats["totalReps"],
-                        "maxWeight": stats["maxWeight"],
-                    }
-                    for exercise, stats in exercise_stats.items()
-                ]
-
-                # Calculate duration
-                duration = 0
-                if session.ended_at and session.started_at:
-                    duration = int((session.ended_at - session.started_at).total_seconds())
-
-                history.append(
-                    {
-                        "id": str(session.id),
-                        "date": session.started_at.isoformat(),
-                        "duration": duration,
-                        "exercises": exercises,
-                    }
+            except Exception as session_error:
+                # Log individual session errors but continue processing others
+                logging.warning(
+                    "Error processing session %s: %s",
+                    getattr(session, "id", "unknown"),
+                    session_error,
                 )
+                continue
 
         # Sort by date (newest first)
         history.sort(key=lambda x: x["date"], reverse=True)
@@ -138,10 +169,30 @@ async def finish_workout(req: dict) -> dict[str, Any]:
     """Finish a workout session."""
     try:
         # Ensure user exists
-        await repo.upsert_user(req["tg_user_id"], handle=None, lang=None)
+        user = await repo.upsert_user(req["tg_user_id"], handle=None, lang=None)
 
-        # Find the session by workout_session_id (which is actually the start time)
-        # For now, we'll just return success since the sets are already saved individually
+        # Get the active session for this user
+        active_session = await repo.get_active_session(user.id)
+
+        if not active_session:
+            return {"success": False, "error": "No active workout session found"}
+
+        # Update the session end time
+        from datetime import UTC, datetime
+
+        from sqlalchemy import update
+
+        from ...db.models import WorkoutSession
+
+        sessmaker = repo.get_session()
+        async with sessmaker() as s:
+            await s.execute(
+                update(WorkoutSession)
+                .where(WorkoutSession.id == active_session.id)
+                .values(ended_at=datetime.now(UTC))
+            )
+            await s.commit()
+
         return {"success": True, "message": "Workout finished successfully"}
 
     except Exception as e:

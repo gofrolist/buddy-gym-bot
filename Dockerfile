@@ -15,8 +15,12 @@ ENV UV_LINK_MODE=copy
 
 WORKDIR /app
 
+# Install build dependencies for psutil
+RUN apk add --no-cache gcc python3-dev musl-dev linux-headers
+
 # Install dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --locked --no-install-project --no-editable
@@ -26,6 +30,7 @@ COPY . /app
 
 # Sync the project (this installs all dependencies including Babel)
 RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.cache/pip \
     uv sync --locked --no-editable
 
 FROM python:3.12.10-alpine AS runtime
@@ -35,7 +40,7 @@ WORKDIR /app
 RUN apk add --no-cache ttf-dejavu tzdata
 ENV TZ=Etc/UTC
 
-# Copy the environment, but not the source code
+# Copy the environment
 COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 

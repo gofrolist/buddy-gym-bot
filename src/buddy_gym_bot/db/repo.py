@@ -4,12 +4,15 @@ Async SQLAlchemy repository for BuddyGym database operations.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
+from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import wraps
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from sqlalchemy import func, select
 from sqlalchemy.engine import make_url
@@ -25,6 +28,73 @@ from .models import Base, Referral, ReferralStatus, SetRow, User, UserPlan, Work
 
 _engine: AsyncEngine | None = None
 _session: async_sessionmaker[AsyncSession] | None = None
+
+# Type variable for the retry decorator
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+# Type alias for session objects that can be returned safely
+class SessionWithSets:
+    """Simple session object with sets that can be returned safely."""
+
+    def __init__(self, data: dict[str, Any]):
+        self.id: int = data["id"]
+        self.user_id: int = data["user_id"]
+        self.title: str = data["title"]
+        self.started_at: datetime = data["started_at"]
+        self.ended_at: datetime | None = data["ended_at"]
+        self.sets: list[SetRow] = data["sets"]
+
+
+def retry_on_connection_error(max_retries: int = 3, delay: float = 0.1):
+    """
+    Decorator to retry database operations on connection errors.
+    Useful for handling transient connection issues.
+    """
+
+    def decorator(func: F) -> F:
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception: Exception | None = None
+            for attempt in range(max_retries):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    # Check if it's a connection-related error
+                    if any(
+                        keyword in str(e).lower()
+                        for keyword in [
+                            "connection",
+                            "server closed",
+                            "connection closed",
+                            "operationalerror",
+                            "timeout",
+                        ]
+                    ):
+                        last_exception = e
+                        if attempt < max_retries - 1:
+                            # Exponential backoff
+                            wait_time = delay * (2**attempt)
+                            logging.warning(
+                                "Database connection error on attempt %d/%d, retrying in %.2fs: %s",
+                                attempt + 1,
+                                max_retries,
+                                wait_time,
+                                e,
+                            )
+                            await asyncio.sleep(wait_time)
+                            continue
+                    # If it's not a connection error or we've exhausted retries, re-raise
+                    raise
+            # If we get here, all retries failed
+            if last_exception:
+                raise last_exception
+            # This should never happen, but just in case
+            raise RuntimeError("Retry mechanism failed unexpectedly")
+
+        return wrapper  # type: ignore
+
+    return decorator
 
 
 def _prepare_url(url: str) -> tuple[str, dict]:
@@ -101,6 +171,10 @@ async def init_db() -> None:
         db_url,
         echo=False,
         pool_pre_ping=True,
+        pool_recycle=3600,  # Recycle connections every hour
+        pool_timeout=30,  # Wait up to 30 seconds for available connection
+        max_overflow=10,  # Allow up to 10 additional connections beyond pool_size
+        pool_size=20,  # Maintain up to 20 connections in the pool
         connect_args=connect_args,
     )
     _session = async_sessionmaker(_engine, expire_on_commit=False)
@@ -417,21 +491,85 @@ async def last_best_set(user_id: int, exercise: str) -> tuple[int, float, int] |
         return (row[0], row[1], row[2]) if row else None
 
 
+@retry_on_connection_error(max_retries=3, delay=0.1)
 async def get_user_sessions(user_id: int) -> list[WorkoutSession]:
     """
     Get all workout sessions for a user with their sets.
+    Optimized to avoid individual refresh calls that can cause connection issues.
     """
     sessmaker = get_session()
     async with sessmaker() as s:
+        # Use a single query with JOIN to fetch sessions and sets together
+        # This avoids the need for individual refresh calls
         res = await s.execute(
-            select(WorkoutSession)
+            select(WorkoutSession, SetRow)
+            .join(SetRow, WorkoutSession.id == SetRow.session_id, isouter=True)
             .where(WorkoutSession.user_id == user_id)
-            .order_by(WorkoutSession.started_at.desc())
+            .order_by(WorkoutSession.started_at.desc(), SetRow.id)
         )
-        sessions = list(res.scalars().all())
 
-        # Load sets for each session
-        for session in sessions:
-            await s.refresh(session, attribute_names=["sets"])
+        # Group results by session
+        sessions_dict = {}
+        for row in res:
+            session, set_row = row
+            if session.id not in sessions_dict:
+                sessions_dict[session.id] = session
+                sessions_dict[session.id].sets = []
+
+            if set_row:  # Only add if there's a set
+                sessions_dict[session.id].sets.append(set_row)
+
+        # Convert to list and sort by start time
+        sessions = list(sessions_dict.values())
+        sessions.sort(key=lambda s: s.started_at, reverse=True)
 
         return sessions
+
+
+@retry_on_connection_error(max_retries=3, delay=0.1)
+async def get_active_session(user_id: int, hours_threshold: int = 2) -> SessionWithSets | None:
+    """
+    Get the most recent active workout session for a user.
+    A session is considered active if it started within the last N hours and hasn't ended.
+    Optimized to avoid individual refresh calls that can cause connection issues.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    sessmaker = get_session()
+    async with sessmaker() as s:
+        # Calculate the threshold time
+        threshold_time = datetime.now(UTC) - timedelta(hours=hours_threshold)
+
+        # First, find the active session
+        session_res = await s.execute(
+            select(WorkoutSession)
+            .where(
+                WorkoutSession.user_id == user_id,
+                WorkoutSession.started_at >= threshold_time,
+                WorkoutSession.ended_at.is_(None),  # Session hasn't ended
+            )
+            .order_by(WorkoutSession.started_at.desc())
+            .limit(1)
+        )
+
+        session = session_res.scalar_one_or_none()
+        if not session:
+            return None
+
+        # Now fetch all sets for this session in a separate query
+        sets_res = await s.execute(
+            select(SetRow).where(SetRow.session_id == session.id).order_by(SetRow.id)
+        )
+
+        # Create a new session object with the sets data
+        # This avoids ORM context issues
+        session_data = {
+            "id": session.id,
+            "user_id": session.user_id,
+            "title": session.title,
+            "started_at": session.started_at,
+            "ended_at": session.ended_at,
+            "sets": list(sets_res.scalars().all()),
+        }
+
+        return SessionWithSets(session_data)

@@ -24,6 +24,7 @@ dependencies = [
   "apscheduler",
   "httpx[http2]",
   "aiogram==3.22.0",
+  "psutil==7.0.0",
 ]
 
 [project.optional-dependencies]
