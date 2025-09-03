@@ -2015,7 +2015,27 @@ export default function WorkoutTracker() {
                 {currentWorkout.map((exercise) => (
                   <Card key={exercise.id}>
                     <CardHeader className="px-4">
-                      <CardTitle className="text-lg">{exercise.name}</CardTitle>
+                      <CardTitle className="text-lg">
+                        <button
+                          type="button"
+                          className="font-medium text-left underline decoration-dotted hover:opacity-80 cursor-pointer"
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            const details = await fetchExerciseDetailsByName(exercise.name)
+                            setPlanExercisePreview(
+                              details || {
+                                name: exercise.name,
+                                equipment: undefined,
+                                category: undefined,
+                                image: undefined,
+                                instructions: [],
+                              },
+                            )
+                          }}
+                        >
+                          {exercise.name}
+                        </button>
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3 px-4">
                       <div className="grid grid-cols-5 gap-2 pb-2 border-b border-border text-sm font-medium text-muted-foreground">
