@@ -1,13 +1,91 @@
 {
-  "title": "BuddyGym",
-  "exercise": "Exercise",
-  "weight": "Weight (kg)",
-  "reps": "Reps",
-  "add_set": "Add Set",
-  "saved": "Workout set saved successfully!",
-  "saving": "Saving...",
-  "exercise_required": "Exercise name is required",
-  "weight_invalid": "Weight must be a positive number",
-  "reps_invalid": "Reps must be a positive number",
-  "save_failed": "Failed to save workout set. Please try again."
+  "app": {
+    "title": "BuddyGym"
+  },
+  "ai": {
+    "planner_title": "AI Workout Planner",
+    "input_placeholder": "Describe your ideal workout plan...",
+    "quick_suggestions": "Quick suggestions:",
+    "suggestions": [
+      "Create a 3-day full body workout for beginners",
+      "Design a 5-day push/pull/legs split for muscle building",
+      "Plan a 4-day upper/lower split for strength training",
+      "Generate a bodyweight workout routine for home",
+      "Create a powerlifting focused 3-day program"
+    ],
+    "generating": "Generating your workout plan...",
+    "analyzing": "AI is analyzing your goals and preferences"
+  },
+  "exercise": {
+    "select_title": "Select Exercise",
+    "search_placeholder": "Search exercises...",
+    "loading": "Loading exercises...",
+    "load_failed": "Failed to load exercises. Please try again.",
+    "retry": "Retry",
+    "none_found": "No exercises found",
+    "try_different": "Try a different search term or category",
+    "prompt_search_or_pick": "Search for exercises or select a muscle group",
+    "add_exercise": "Add Exercise",
+    "remove_exercise_title": "Remove exercise",
+    "details": "Exercise details",
+    "target": "Target:",
+    "body_part": "Body Part:",
+    "equipment": "Equipment:",
+    "instructions": "Instructions:",
+    "close": "Close"
+  },
+  "plan": {
+    "title": "Weekly Plan",
+    "start_workout": "Start Workout",
+    "exercise": "Exercise",
+    "sets": "Sets",
+    "reps": "Reps",
+    "no_exercises_for_day": "No exercises planned for {day}",
+    "add_exercises_hint": "Add exercises to start building your workout"
+  },
+  "workout": {
+    "title": "Active Workout",
+    "no_active": "No active workout",
+    "go_to_plan_hint": "Go to Plan tab to start a workout",
+    "set": "Set",
+    "reps": "Reps",
+    "weight_lbs": "Weight (lbs)",
+    "previous": "Previous",
+    "done": "Done",
+    "cancel": "Cancel Workout",
+    "finish": "Finish Workout"
+  },
+  "history": {
+    "title": "Workout History",
+    "sessions": "Sessions",
+    "stats": "Statistics",
+    "no_history": "No workout history",
+    "complete_first_hint": "Complete your first workout to see it here",
+    "total_workouts": "Total Workouts",
+    "avg_duration": "Avg Duration",
+    "total_volume": "Total Volume",
+    "lbs_lifted": "lbs lifted",
+    "this_week": "This Week",
+    "workouts": "workouts",
+    "most_frequent": "Most Frequent Exercises",
+    "times": "times",
+    "personal_records": "Personal Records",
+    "pr_more_needed": "Complete more workouts to see your personal records",
+    "recent_progress": "Recent Progress: {exercise}"
+  },
+  "tabs": {
+    "plan": "Plan",
+    "workout": "Workout",
+    "history": "History"
+  },
+  "welcome": {
+    "greeting_name": "Welcome, {name}!",
+    "language": "Language: {lang}",
+    "dev_mode_user_id": "Dev Mode - User ID:",
+    "user_id_placeholder": "User ID"
+  },
+  "units": {
+    "lbs": "lbs",
+    "reps": "reps"
+  }
 }

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from ...bot.openai_scheduling import generate_schedule
+from ...config import SETTINGS
 from ...db import repo
 
 router = APIRouter()
@@ -43,8 +44,22 @@ async def request_schedule_change(request: ScheduleRequest):
     by sending a message to their trainer or the system, powered by AI.
     """
     try:
+        logging.info("=== SCHEDULE REQUEST START ===")
+        logging.info(
+            f"Request received: tg_user_id={request.tg_user_id}, message='{request.message}'"
+        )
+        logging.info(f"Request context: {request.context}")
+
+        # Log environment variables
+        logging.info(f"OPENAI_API_KEY configured: {bool(SETTINGS.OPENAI_API_KEY)}")
+        logging.info(
+            f"OPENAI_API_KEY length: {len(SETTINGS.OPENAI_API_KEY) if SETTINGS.OPENAI_API_KEY else 0}"
+        )
+
         # Ensure user exists
+        logging.info(f"Upserting user with tg_user_id: {request.tg_user_id}")
         await repo.upsert_user(request.tg_user_id, handle=None, lang=None)
+        logging.info("User upserted successfully")
 
         logging.info(f"Schedule request from user {request.tg_user_id}: {request.message}")
         logging.info(f"Context provided: {bool(request.context)}")
@@ -81,15 +96,29 @@ async def request_schedule_change(request: ScheduleRequest):
                 logging.warning(f"Failed to fetch current plan for context: {e}")
 
         # Generate schedule using the same logic as Telegram bot
+        logging.info("=== OPENAI SCHEDULE GENERATION START ===")
         logging.info("Generating schedule using OpenAI scheduling service")
         try:
+            # Check if OpenAI API key is available
+            logging.info("Checking OpenAI API key...")
+            if not SETTINGS.OPENAI_API_KEY:
+                logging.warning("OpenAI API key not configured, using fallback response")
+                raise ValueError("OpenAI API key not configured for local development")
+
+            logging.info(f"OpenAI API key is configured, length: {len(SETTINGS.OPENAI_API_KEY)}")
             logging.info("About to call generate_schedule...")
+            logging.info(
+                f"generate_schedule parameters: text='{request.message}', tz='UTC', base_plan={bool(current_plan)}"
+            )
+
             new_plan = await generate_schedule(
                 text=request.message,
                 tz="UTC",  # TODO: Get user's timezone from context
                 base_plan=current_plan,
             )
             logging.info("generate_schedule completed successfully")
+            logging.info(f"Generated plan type: {type(new_plan)}")
+            logging.info(f"Generated plan keys: {list(new_plan.keys()) if new_plan else 'None'}")
 
             logging.info(
                 f"Generated plan: {json.dumps(new_plan, indent=2) if new_plan else 'None'}"
@@ -133,9 +162,11 @@ async def request_schedule_change(request: ScheduleRequest):
                 )
 
         except Exception as e:
+            logging.error("=== OPENAI SCHEDULE GENERATION FAILED ===")
             logging.exception(f"Failed to generate schedule: {e}")
             logging.error(f"Exception type: {type(e).__name__}")
             logging.error(f"Exception details: {e!s}")
+            logging.error(f"Exception traceback: {e.__traceback__}")
             # Fall through to fallback response
 
         # Fallback to pattern-based responses if AI is unavailable
@@ -167,7 +198,10 @@ async def request_schedule_change(request: ScheduleRequest):
         )
 
     except Exception as e:
+        logging.error("=== SCHEDULE REQUEST FAILED ===")
         logging.exception(f"Error processing schedule request: {e}")
+        logging.error(f"Exception type: {type(e).__name__}")
+        logging.error(f"Exception details: {e!s}")
         return ScheduleResponse(
             success=False,
             message="Failed to process schedule request",

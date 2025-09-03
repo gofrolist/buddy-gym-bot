@@ -8,7 +8,7 @@ RUN npm ci
 COPY webapp ./
 RUN npm run build
 
-FROM python:3.12.10-alpine AS builder
+FROM python:3.12.11-alpine AS builder
 COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /uvx /bin/
 
 ENV UV_LINK_MODE=copy
@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.cache/pip \
     uv sync --locked --no-editable
 
-FROM python:3.12.10-alpine AS runtime
+FROM python:3.12.11-alpine AS runtime
 
 WORKDIR /app
 
@@ -47,8 +47,8 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Compile locales
 RUN pybabel compile -d .venv/lib/python3.12/site-packages/buddy_gym_bot/bot/locales/ -D messages -f
 
-# Copy the webapp
-COPY --from=webapp /web/dist /app/static/webapp
+# Copy the webapp (Next.js static export)
+COPY --from=webapp /web/out /app/static/webapp
 
 # Run the application
 EXPOSE 8080

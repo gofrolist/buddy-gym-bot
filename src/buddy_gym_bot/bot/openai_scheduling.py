@@ -7,7 +7,7 @@ import re
 import unicodedata
 from collections import defaultdict
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -54,7 +54,9 @@ def _normalize_name(s: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def _build_exercise_indexes():
+def _build_exercise_indexes() -> tuple[
+    list[str], list[str], dict[str, str], defaultdict[str, set[int]]
+]:
     """
     Returns:
       names: list of canonical names
@@ -63,8 +65,9 @@ def _build_exercise_indexes():
       token_index: token -> set(idx positions) for fast candidate narrowing
     """
     db = ExerciseDBClient()  # uses your existing loader with full data
-    items = db.exercises_data  # [{'exerciseId','name',...}, ...]
-    names, ids = [], []
+    items: list[dict[str, Any]] = db.exercises_data  # [{'exerciseId','name',...}, ...]
+    names: list[str] = []
+    ids: list[str] = []
     for x in items:
         n = (x.get("name") or "").strip()
         i = x.get("exerciseId")
@@ -75,7 +78,7 @@ def _build_exercise_indexes():
     norm_to_id = {_normalize_name(n): i for n, i in zip(names, ids, strict=False)}
 
     # token-based inverted index
-    token_index = defaultdict(set)
+    token_index: defaultdict[str, set[int]] = defaultdict(set)
     for idx, n in enumerate(names):
         for tok in _normalize_name(n).split():
             if tok:
@@ -113,7 +116,7 @@ def _resolve_exercise_id_by_name(name: str) -> tuple[str | None, str, str]:
 
     # 3) token-narrowed fuzzy match (difflib on candidates only)
     toks = set(aliased.split())
-    candidates = set()
+    candidates: set[int] = set()
     for t in toks:
         candidates |= token_index.get(t, set())
 
@@ -121,7 +124,8 @@ def _resolve_exercise_id_by_name(name: str) -> tuple[str | None, str, str]:
     pool = [names[i] for i in candidates] if candidates else names
 
     # try a decent ratio threshold; tokenized strings tend to match >= 0.84 when close
-    best_id, best_ratio = None, 0.0
+    best_id: str | None = None
+    best_ratio: float = 0.0
     for cand in pool[:5000]:  # safeguard
         r = difflib.SequenceMatcher(None, _normalize_name(cand), aliased).ratio()
         if r > best_ratio:
@@ -188,9 +192,9 @@ SCHEMA: dict[str, Any] = {
 }
 
 
-def build_constraints_schema() -> dict:
+def build_constraints_schema() -> dict[str, Any]:
     """Build constraints schema programmatically to ensure required matches properties exactly."""
-    properties = {
+    properties: dict[str, Any] = {
         "days": {
             "type": "array",
             "items": {"type": "string", "enum": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]},
@@ -205,8 +209,8 @@ def build_constraints_schema() -> dict:
         "language": {"type": "string"},  # "" when unknown
     }
 
-    required = list(properties.keys())  # MUST match exactly
-    schema = {
+    required: list[str] = list(properties.keys())  # MUST match exactly
+    schema: dict[str, Any] = {
         "type": "object",
         "properties": properties,
         "required": required,
@@ -230,9 +234,9 @@ CONSTRAINTS_SCHEMA = build_constraints_schema()
 # Constraint sanitization and day resolution functions
 
 
-def sanitize_constraints(c: dict) -> dict:
+def sanitize_constraints(c: dict[str, Any]) -> dict[str, Any]:
     """Sanitize and validate constraints from GPT-5 output."""
-    out = dict(c or {})
+    out: dict[str, Any] = dict(c or {})
 
     dm = out.get("duration_minutes")
     out["duration_minutes"] = dm if dm in (30, 45, 60) else 30
@@ -243,7 +247,7 @@ def sanitize_constraints(c: dict) -> dict:
     days = [
         d for d in (out.get("days") or []) if d in {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
     ]
-    seen = set()
+    seen: set[str] = set()
     days = [d for d in days if not (d in seen or seen.add(d))]
     out["days"] = days
 
@@ -277,12 +281,12 @@ def sanitize_constraints(c: dict) -> dict:
     return out
 
 
-def resolve_requested_days(c: dict) -> list[str]:
+def resolve_requested_days(c: dict[str, Any]) -> list[str]:
     """Resolve requested days from constraints, with fallback to days_per_week presets."""
     if c["days"]:
         return c["days"]
     dpw = c.get("days_per_week") or 3
-    presets = {
+    presets: dict[int, list[str]] = {
         1: ["Wed"],
         2: ["Tue", "Thu"],
         3: ["Mon", "Wed", "Fri"],
@@ -528,7 +532,9 @@ def _extract_complete_json(json_text: str) -> str | None:
         return None
 
 
-def _validate_and_fix_plan(plan: dict, constraints: dict, requested_days: list[str]) -> dict:
+def _validate_and_fix_plan(
+    plan: dict[str, Any], constraints: dict[str, Any], requested_days: list[str]
+) -> dict[str, Any]:
     """Validate and fix the AI-generated plan to ensure it follows user requirements."""
     if not plan or "days" not in plan:
         return plan
@@ -538,16 +544,18 @@ def _validate_and_fix_plan(plan: dict, constraints: dict, requested_days: list[s
     logging.info(f"Original plan has {len(plan.get('days', []))} days")
 
     # Extract requirements from constraints
-    duration_minutes = constraints.get("duration_minutes", 30)
+    duration_minutes: int = int(cast(Any, constraints.get("duration_minutes", 30)) or 30)
 
     logging.info(f"Requested duration: {duration_minutes} minutes")
 
     # Fix the plan if needed
-    fixed_plan = plan.copy()
+    fixed_plan: dict[str, Any] = dict(plan)
 
     # Ensure only the requested days are used
     if requested_days and len(requested_days) > 0:
-        current_days = [day.get("weekday") for day in plan.get("days", [])]
+        current_days = [
+            cast(dict[str, Any], day).get("weekday") for day in cast(list, plan.get("days", []))
+        ]
         logging.info(f"User requested days: {requested_days}")
         logging.info(f"AI generated days: {current_days}")
 
@@ -556,7 +564,9 @@ def _validate_and_fix_plan(plan: dict, constraints: dict, requested_days: list[s
             logging.warning(f"AI used wrong days: {current_days}, expected: {requested_days}")
             # Keep only the requested days, remove others
             fixed_plan["days"] = [
-                day for day in plan.get("days", []) if day.get("weekday") in requested_days
+                day
+                for day in cast(list, plan.get("days", []))
+                if cast(dict[str, Any], day).get("weekday") in requested_days
             ]
             # Update days_per_week
             fixed_plan["days_per_week"] = len(fixed_plan["days"])
@@ -574,65 +584,65 @@ def _validate_and_fix_plan(plan: dict, constraints: dict, requested_days: list[s
         fixed_plan["days_per_week"] = len(requested_days)
 
     # Ensure each day has exercises (no specific count requirements)
-    for day in fixed_plan.get("days", []):
+    for day in cast(list, fixed_plan.get("days", [])):
+        day_dict = cast(dict[str, Any], day)
         # Validate and fix weekday if needed
-        weekday = day.get("weekday", "")
+        weekday: str = str(day_dict.get("weekday", ""))
         valid_weekdays = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
         if weekday not in valid_weekdays:
             # Find the first valid weekday from requested days
             if requested_days:
-                day["weekday"] = requested_days[0]
+                day_dict["weekday"] = requested_days[0]
                 logging.info(f"Fixed invalid weekday '{weekday}' to '{requested_days[0]}'")
             else:
-                day["weekday"] = "Mon"
+                day_dict["weekday"] = "Mon"
                 logging.info(f"Fixed invalid weekday '{weekday}' to 'Mon'")
 
         # Validate and fix time if needed
-        day_time = day.get("time", "")
+        day_time: str = str(day_dict.get("time", ""))
         if not day_time or not re.match(r"^[0-2][0-9]:[0-5][0-9]$", day_time):
-            default_time = constraints.get("time") or "19:00"
-            day["time"] = default_time
+            default_time: str = str(constraints.get("time") or "19:00")
+            day_dict["time"] = default_time
             logging.info(
-                f"Fixed invalid time '{day_time}' to '{default_time}' for {day.get('weekday')}"
+                f"Fixed invalid time '{day_time}' to '{default_time}' for {day_dict.get('weekday')}"
             )
 
-        exercises = day.get("exercises", [])
+        exercises: list[dict[str, Any]] = [
+            cast(dict[str, Any], e) for e in cast(list, day_dict.get("exercises", []))
+        ]
 
         # Deduplicate exercises to prevent multiple identical exercises
-        seen_exercises = set()
-        unique_exercises = []
+        seen_exercises: set[str] = set()
+        unique_exercises: list[dict[str, Any]] = []
         for ex in exercises:
-            if isinstance(ex, dict):
-                ex_name = ex.get("name", "").lower().strip()
-                if ex_name and ex_name not in seen_exercises:
-                    seen_exercises.add(ex_name)
-                    unique_exercises.append(ex)
-                elif ex_name:
-                    logging.info(
-                        f"Removing duplicate exercise '{ex.get('name')}' from {day.get('weekday')}"
-                    )
+            ex_name: str = str(ex.get("name", "")).lower().strip()
+            if ex_name and ex_name not in seen_exercises:
+                seen_exercises.add(ex_name)
+                unique_exercises.append(ex)
+            elif ex_name:
+                logging.info(
+                    f"Removing duplicate exercise '{ex.get('name')}' from {day_dict.get('weekday')}"
+                )
 
         # Replace exercises list with deduplicated version
         exercises = unique_exercises
-        day["exercises"] = exercises
+        day_dict["exercises"] = exercises
 
         # Determine targets by duration
-        min_max = {30: (4, 5), 45: (5, 6), 60: (6, 8)}
-        mn, mx = min_max.get(duration_minutes, (4, 5))
+        min_max: dict[int, tuple[int, int]] = {30: (4, 5), 45: (5, 6), 60: (6, 8)}
+        mn, mx = min_max.get(int(duration_minutes), (4, 5))
 
         # Clamp sets per duration
         if duration_minutes == 30:
             for e in exercises:
-                if isinstance(e, dict):
-                    e["sets"] = 3
+                e["sets"] = 3
         else:  # 45 or 60
             for e in exercises:
-                if isinstance(e, dict):
-                    try:
-                        s = int(e.get("sets", 3))
-                    except Exception:
-                        s = 3
-                    e["sets"] = min(max(s, 3), 4)
+                try:
+                    s = int(cast(Any, e.get("sets", 3)))
+                except Exception:
+                    s = 3
+                e["sets"] = min(max(s, 3), 4)
 
         # No top-up - let the plan be exactly what the user requested
         # If the AI generated fewer exercises than expected, that's the user's plan
@@ -645,15 +655,16 @@ def _validate_and_fix_plan(plan: dict, constraints: dict, requested_days: list[s
             )
             exercises = exercises[:mx]
 
-        day["exercises"] = exercises
+        day_dict["exercises"] = exercises
         logging.info(
-            f"Day {day.get('weekday')} has {len(exercises)} exercises for {duration_minutes} min duration"
+            f"Day {day_dict.get('weekday')} has {len(exercises)} exercises for {duration_minutes} min duration"
         )
 
     # Sort days and sync counters before returning
     order = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
     fixed_plan["days"] = sorted(
-        fixed_plan.get("days", []), key=lambda d: order.get(d.get("weekday", "Mon"), 0)
+        cast(list, fixed_plan.get("days", [])),
+        key=lambda d: order.get(cast(dict[str, Any], d).get("weekday", "Mon"), 0),
     )
     fixed_plan["days_per_week"] = len(fixed_plan["days"])
 

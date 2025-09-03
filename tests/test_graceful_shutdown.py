@@ -52,7 +52,10 @@ async def test_graceful_shutdown_task_cancellation():
     from buddy_gym_bot.bot.main import graceful_shutdown
 
     # Create mock bot with valid token format
-    bot = Bot("123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk", default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(
+        "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk",
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
     dp = Dispatcher()
 
     # Create some dummy tasks
@@ -65,12 +68,12 @@ async def test_graceful_shutdown_task_cancellation():
     async def mock_close():
         return None
 
-    with patch.object(bot, 'session') as mock_session:
+    with patch.object(bot, "session") as mock_session:
         mock_session.close = mock_close
 
         # Mock sys.exit to prevent actual exit
-        with patch('sys.exit') as mock_exit:
-            with patch('os._exit') as mock_os_exit:
+        with patch("sys.exit") as mock_exit:
+            with patch("os._exit") as mock_os_exit:
                 # Call graceful shutdown
                 await graceful_shutdown(bot, dp, "test")
 
@@ -79,28 +82,29 @@ async def test_graceful_shutdown_task_cancellation():
                     assert task.cancelled() or task.done()
 
                 # Check that exit was called
-                if not sys.platform.startswith('win'):
+                if not sys.platform.startswith("win"):
                     mock_os_exit.assert_called_once_with(0)
                 else:
                     mock_exit.assert_called_once_with(0)
 
 
-
-
-@pytest.mark.skipif(sys.platform.startswith('win'), reason="Signal handling not supported on Windows")
+@pytest.mark.skipif(
+    sys.platform.startswith("win"), reason="Signal handling not supported on Windows"
+)
 def test_signal_handler_registration():
     """Test that signal handlers are registered on Unix systems."""
 
     # Mock the entire main function to prevent actual bot startup and global state pollution
-    with patch('buddy_gym_bot.bot.main.main') as mock_main:
+    with patch("buddy_gym_bot.bot.main.main") as mock_main:
         # Mock signal registration
-        with patch('signal.signal') as mock_signal:
+        with patch("signal.signal"):
             # Mock asyncio.run to prevent actual async execution
-            with patch('asyncio.run') as mock_asyncio_run:
+            with patch("asyncio.run") as mock_asyncio_run:
                 mock_asyncio_run.return_value = None
 
                 # Import and call the mocked main function
                 from buddy_gym_bot.bot.main import main
+
                 main()
 
                 # Check that the mocked main was called

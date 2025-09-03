@@ -101,13 +101,13 @@ async def get_workout_history(
             # Return empty history instead of failing completely
             return {"success": True, "history": []}
 
-        history = []
+        history: list[dict[str, Any]] = []
         for session in sessions:
             try:
-                if session.sets:  # Only include sessions with sets
+                if session["sets"]:  # Only include sessions with sets
                     # Group sets by exercise
-                    exercise_stats = {}
-                    for set_row in session.sets:
+                    exercise_stats: dict[str, dict[str, float | int]] = {}
+                    for set_row in session["sets"]:
                         if set_row.exercise not in exercise_stats:
                             exercise_stats[set_row.exercise] = {
                                 "sets": 0,
@@ -134,13 +134,15 @@ async def get_workout_history(
 
                     # Calculate duration
                     duration = 0
-                    if session.ended_at and session.started_at:
-                        duration = int((session.ended_at - session.started_at).total_seconds())
+                    if session["ended_at"] and session["started_at"]:
+                        duration = int(
+                            (session["ended_at"] - session["started_at"]).total_seconds()
+                        )
 
                     history.append(
                         {
-                            "id": str(session.id),
-                            "date": session.started_at.isoformat(),
+                            "id": str(session["id"]),
+                            "date": session["started_at"].isoformat(),
                             "duration": duration,
                             "exercises": exercises,
                         }
@@ -149,7 +151,7 @@ async def get_workout_history(
                 # Log individual session errors but continue processing others
                 logging.warning(
                     "Error processing session %s: %s",
-                    getattr(session, "id", "unknown"),
+                    session["id"] if isinstance(session, dict) and "id" in session else "unknown",
                     session_error,
                 )
                 continue

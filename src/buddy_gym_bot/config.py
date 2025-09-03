@@ -1,7 +1,7 @@
 import os
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Try to load .env file manually as fallback
 try:
@@ -48,7 +48,7 @@ class Config(BaseSettings):
     Uses pydantic for validation and parsing.
     """
 
-    model_config = {
+    model_config: SettingsConfigDict = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "extra": "ignore",  # Ignore extra fields from .env

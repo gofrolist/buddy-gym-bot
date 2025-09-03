@@ -8,6 +8,7 @@ help:
 	@echo "  webapp-build   - Build webapp and copy to static directory"
 	@echo "  run            - Start bot locally (polling)"
 	@echo "  server         - Start FastAPI server with webapp"
+	@echo "  dev            - Start both frontend and backend for local development"
 	@echo "  test           - Run tests"
 	@echo "  precommit      - Run pre-commit on all files"
 	@echo "  build          - Build Docker image"
@@ -37,6 +38,18 @@ run:
 .PHONY: server
 server:
 	uv run uvicorn buddy_gym_bot.server.main:app --host 0.0.0.0 --port 8000 --reload
+
+.PHONY: dev
+dev:
+	@echo "🚀 Starting development environment..."
+	@echo "📱 Frontend: http://localhost:3000"
+	@echo "🔧 Backend:  http://localhost:8000"
+	@echo "Press Ctrl+C to stop both services"
+	@trap 'kill 0' SIGINT; \
+	uv run uvicorn buddy_gym_bot.server.main:app --host 0.0.0.0 --port 8000 --reload & \
+	sleep 3 && \
+	cd webapp && npm run dev & \
+	wait
 
 .PHONY: test
 test:

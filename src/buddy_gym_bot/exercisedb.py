@@ -82,7 +82,7 @@ class ExerciseDBClient:
             return []
 
         query_lower = query.lower().strip()
-        results = []
+        results: list[dict[str, Any]] = []
 
         for exercise in self.exercises_data:
             exercise_name = exercise.get("name", "").lower().strip()
@@ -114,7 +114,7 @@ class ExerciseDBClient:
             return exact_matches[0]
 
         # Strategy 2: Starts with match (most specific)
-        starts_with_matches = []
+        starts_with_matches: list[dict[str, Any]] = []
         for exercise in self.exercises_data:
             exercise_name = exercise.get("name", "").lower().strip()
             if exercise_name.startswith(query_lower):
@@ -125,7 +125,7 @@ class ExerciseDBClient:
             return min(starts_with_matches, key=lambda x: len(x.get("name", "")))
 
         # Strategy 3: Contains match (least specific)
-        contains_matches = []
+        contains_matches: list[dict[str, Any]] = []
         for exercise in self.exercises_data:
             exercise_name = exercise.get("name", "").lower().strip()
             if query_lower in exercise_name:
@@ -168,6 +168,8 @@ class ExerciseDBClient:
                             "target_muscles": exercise.get("targetMuscles", []),
                             "body_parts": exercise.get("bodyParts", []),
                             "equipments": exercise.get("equipments", []),
+                            # Provide direct GIF url (external media)
+                            "image": self.get_external_media_url(exercise_id),
                         }
                     )
 
@@ -197,6 +199,7 @@ class ExerciseDBClient:
                                 if exercise.get("equipments")
                                 else "",
                                 "instructions": exercise.get("instructions", []),
+                                "image": self.get_external_media_url(exercise_id),
                             }
                         )
                         if len(results) >= limit:
@@ -228,6 +231,7 @@ class ExerciseDBClient:
                                 else "",
                                 "equipment": equipments[0] if equipments else "",
                                 "instructions": exercise.get("instructions", []),
+                                "image": self.get_external_media_url(exercise_id),
                             }
                         )
                         if len(results) >= limit:

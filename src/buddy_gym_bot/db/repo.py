@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from functools import wraps
 from importlib import resources
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypedDict, TypeVar, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.engine import make_url
@@ -44,6 +44,17 @@ class SessionWithSets:
         self.started_at: datetime = data["started_at"]
         self.ended_at: datetime | None = data["ended_at"]
         self.sets: list[SetRow] = data["sets"]
+
+
+class WorkoutSessionDict(TypedDict):
+    """Lightweight representation of a workout session with its sets."""
+
+    id: int
+    user_id: int
+    title: str | None
+    started_at: datetime
+    ended_at: datetime | None
+    sets: list[SetRow]
 
 
 def retry_on_connection_error(max_retries: int = 3, delay: float = 0.1):
@@ -193,21 +204,26 @@ async def init_db() -> None:
         if should_use_create_all:
             await conn.run_sync(Base.metadata.create_all)
         else:
-            # discover migrations
-            have_migrations = False
-            try:
-                pkg_migrations = resources.files("buddy_gym_bot").joinpath("migrations")
-                have_migrations = pkg_migrations.is_dir()
-            except Exception:
-                pass
-            if not have_migrations:
-                fs_dir = Path(__file__).resolve().parents[2] / "migrations"
-                have_migrations = fs_dir.is_dir()
-
-            if have_migrations:
-                await _run_migrations(conn)
-            else:
+            # For SQLite, always use create_all to avoid migration syntax issues
+            url_obj = make_url(db_url)
+            if url_obj.drivername.startswith("sqlite"):
                 await conn.run_sync(Base.metadata.create_all)
+            else:
+                # discover migrations
+                have_migrations = False
+                try:
+                    pkg_migrations = resources.files("buddy_gym_bot").joinpath("migrations")
+                    have_migrations = pkg_migrations.is_dir()
+                except Exception:
+                    pass
+                if not have_migrations:
+                    fs_dir = Path(__file__).resolve().parents[2] / "migrations"
+                    have_migrations = fs_dir.is_dir()
+
+                if have_migrations:
+                    await _run_migrations(conn)
+                else:
+                    await conn.run_sync(Base.metadata.create_all)
 
 
 def get_session() -> async_sessionmaker[AsyncSession]:
@@ -492,7 +508,7 @@ async def last_best_set(user_id: int, exercise: str) -> tuple[int, float, int] |
 
 
 @retry_on_connection_error(max_retries=3, delay=0.1)
-async def get_user_sessions(user_id: int) -> list[WorkoutSession]:
+async def get_user_sessions(user_id: int) -> list[WorkoutSessionDict]:
     """
     Get all workout sessions for a user with their sets.
     Optimized to avoid individual refresh calls that can cause connection issues.
@@ -508,20 +524,30 @@ async def get_user_sessions(user_id: int) -> list[WorkoutSession]:
             .order_by(WorkoutSession.started_at.desc(), SetRow.id)
         )
 
-        # Group results by session
-        sessions_dict = {}
+        # Group results by session and create new objects to avoid ORM context issues
+        sessions_dict: dict[int, WorkoutSessionDict] = {}
         for row in res:
             session, set_row = row
             if session.id not in sessions_dict:
-                sessions_dict[session.id] = session
-                sessions_dict[session.id].sets = []
+                # Create a new session object with basic data to avoid ORM context issues
+                sessions_dict[session.id] = cast(
+                    WorkoutSessionDict,
+                    {
+                        "id": session.id,
+                        "user_id": session.user_id,
+                        "title": session.title,
+                        "started_at": session.started_at,
+                        "ended_at": session.ended_at,
+                        "sets": [],
+                    },
+                )
 
             if set_row:  # Only add if there's a set
-                sessions_dict[session.id].sets.append(set_row)
+                sessions_dict[session.id]["sets"].append(set_row)
 
         # Convert to list and sort by start time
-        sessions = list(sessions_dict.values())
-        sessions.sort(key=lambda s: s.started_at, reverse=True)
+        sessions: list[WorkoutSessionDict] = list(sessions_dict.values())
+        sessions.sort(key=lambda s: s["started_at"], reverse=True)
 
         return sessions
 

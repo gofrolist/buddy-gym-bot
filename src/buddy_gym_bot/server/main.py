@@ -25,7 +25,7 @@ from ..bot.main import on_shutdown as bot_on_shutdown
 from ..bot.main import on_startup as bot_on_startup
 from ..bot.main import router as tg_router
 from ..config import SETTINGS
-from ..db import close_db
+from ..db import close_db, init_db
 from .routes.exercises import router as r_exercises
 from .routes.plan import router as r_plan
 from .routes.schedule import router as r_schedule
@@ -38,24 +38,34 @@ async def lifespan(app: FastAPI):
     # Startup
     global bot, dp
     try:
-        # Initialize bot and dispatcher
-        bot = Bot(SETTINGS.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-        dp = Dispatcher()
-        dp.include_router(tg_router)
+        # Initialize database
+        await init_db()
+        logging.info("Database initialized")
 
-        await bot_on_startup(bot)
-        await dp.emit_startup(bot)
-        if SETTINGS.USE_WEBHOOK and SETTINGS.WEBHOOK_URL:
-            await bot.set_webhook(SETTINGS.WEBHOOK_URL, drop_pending_updates=True)
-            logging.info("Webhook set to %s", SETTINGS.WEBHOOK_URL)
+        # Skip bot initialization for local development with test token
+        if SETTINGS.BOT_TOKEN == "test-token":
+            logging.info("Skipping bot initialization for local development")
+            bot = None
+            dp = None
+        else:
+            # Initialize bot and dispatcher
+            bot = Bot(SETTINGS.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+            dp = Dispatcher()
+            dp.include_router(tg_router)
 
-        # Update bot health status
-        try:
-            from ..bot.main import update_health_status
+            await bot_on_startup(bot)
+            await dp.emit_startup(bot)
+            if SETTINGS.USE_WEBHOOK and SETTINGS.WEBHOOK_URL:
+                await bot.set_webhook(SETTINGS.WEBHOOK_URL, drop_pending_updates=True)
+                logging.info("Webhook set to %s", SETTINGS.WEBHOOK_URL)
 
-            update_health_status("healthy")
-        except Exception:
-            pass
+            # Update bot health status
+            try:
+                from ..bot.main import update_health_status
+
+                update_health_status("healthy")
+            except Exception:
+                pass
 
         logging.info("FastAPI server startup completed")
     except Exception as e:
@@ -110,6 +120,11 @@ except Exception:
     pass
 allowed.add("https://t.me")
 allowed.add("https://web.telegram.org")
+
+# Add local development origins
+allowed.add("http://localhost:3000")
+allowed.add("http://127.0.0.1:3000")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(allowed),

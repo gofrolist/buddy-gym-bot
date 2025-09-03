@@ -31,11 +31,11 @@ async def test_schedule_route_success():
                         "name": "Barbell Bench Press",
                         "exercise_db_id": "test123",
                         "sets": 3,
-                        "reps": "5"
+                        "reps": "5",
                     }
-                ]
+                ],
             }
-        ]
+        ],
     }
 
     # Mock the generate_schedule function
@@ -54,11 +54,7 @@ async def test_schedule_route_success():
             # Make the request
             response = client.post(
                 "/api/v1/schedule",
-                json={
-                    "tg_user_id": 12345,
-                    "message": "Create a new 2-day plan",
-                    "context": None
-                }
+                json={"tg_user_id": 12345, "message": "Create a new 2-day plan", "context": None},
             )
 
             # Verify response
@@ -70,9 +66,7 @@ async def test_schedule_route_success():
 
             # Verify function calls
             mock_generate.assert_called_once_with(
-                text="Create a new 2-day plan",
-                tz="UTC",
-                base_plan=None
+                text="Create a new 2-day plan", tz="UTC", base_plan=None
             )
             mock_repo.upsert_user_plan.assert_called_once_with(1, mock_plan)
 
@@ -85,14 +79,7 @@ async def test_schedule_route_with_existing_plan():
         "timezone": "UTC",
         "weeks": 1,
         "days_per_week": 2,
-        "days": [
-            {
-                "weekday": "Mon",
-                "time": "19:00",
-                "focus": "Full Body",
-                "exercises": []
-            }
-        ]
+        "days": [{"weekday": "Mon", "time": "19:00", "focus": "Full Body", "exercises": []}],
     }
 
     new_plan = {
@@ -105,9 +92,9 @@ async def test_schedule_route_with_existing_plan():
                 "weekday": "Mon",
                 "time": "20:00",  # Modified time
                 "focus": "Full Body",
-                "exercises": []
+                "exercises": [],
             }
-        ]
+        ],
     }
 
     # Mock the generate_schedule function
@@ -130,8 +117,8 @@ async def test_schedule_route_with_existing_plan():
                 json={
                     "tg_user_id": 12345,
                     "message": "Change Monday time to 20:00",
-                    "context": {"current_plan": existing_plan}
-                }
+                    "context": {"current_plan": existing_plan},
+                },
             )
 
             # Verify response
@@ -142,12 +129,8 @@ async def test_schedule_route_with_existing_plan():
 
             # Verify function calls
             mock_generate.assert_called_once_with(
-                text="Change Monday time to 20:00",
-                tz="UTC",
-                base_plan=existing_plan
+                text="Change Monday time to 20:00", tz="UTC", base_plan=existing_plan
             )
-
-
 
 
 @pytest.mark.asyncio
@@ -158,7 +141,7 @@ async def test_schedule_route_no_changes():
         "timezone": "UTC",
         "weeks": 1,
         "days_per_week": 2,
-        "days": []
+        "days": [],
     }
 
     # Mock the generate_schedule function to return the same plan (no changes)
@@ -182,8 +165,8 @@ async def test_schedule_route_no_changes():
                 json={
                     "tg_user_id": 12345,
                     "message": "Keep the same plan",
-                    "context": {"current_plan": existing_plan}
-                }
+                    "context": {"current_plan": existing_plan},
+                },
             )
 
             # Verify response
@@ -215,11 +198,7 @@ async def test_schedule_route_generation_failure():
             # Make the request
             response = client.post(
                 "/api/v1/schedule",
-                json={
-                    "tg_user_id": 12345,
-                    "message": "Create a plan",
-                    "context": None
-                }
+                json={"tg_user_id": 12345, "message": "Create a plan", "context": None},
             )
 
             # Verify response - should fall back to pattern-based response
@@ -238,7 +217,7 @@ async def test_schedule_route_save_failure():
         "timezone": "UTC",
         "weeks": 1,
         "days_per_week": 2,
-        "days": []
+        "days": [],
     }
 
     # Mock the generate_schedule function
@@ -257,11 +236,7 @@ async def test_schedule_route_save_failure():
             # Make the request
             response = client.post(
                 "/api/v1/schedule",
-                json={
-                    "tg_user_id": 12345,
-                    "message": "Create a plan",
-                    "context": None
-                }
+                json={"tg_user_id": 12345, "message": "Create a plan", "context": None},
             )
 
             # Verify response - should return the plan even if saving failed
@@ -282,11 +257,7 @@ async def test_schedule_route_user_creation_failure():
         # Make the request
         response = client.post(
             "/api/v1/schedule",
-            json={
-                "tg_user_id": 12345,
-                "message": "Create a plan",
-                "context": None
-            }
+            json={"tg_user_id": 12345, "message": "Create a plan", "context": None},
         )
 
         # Verify response
@@ -305,7 +276,7 @@ def test_schedule_route_invalid_request():
         json={
             "tg_user_id": 12345,
             # Missing "message" field
-        }
+        },
     )
 
     assert response.status_code == 422  # Validation error
@@ -315,8 +286,8 @@ def test_schedule_route_invalid_request():
         "/api/v1/schedule",
         json={
             "tg_user_id": "invalid_id",  # Should be int
-            "message": "Create a plan"
-        }
+            "message": "Create a plan",
+        },
     )
 
     assert response.status_code == 422  # Validation error

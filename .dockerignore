@@ -15,7 +15,8 @@
 **/downloads
 **/eggs
 **/.eggs
-**/lib
+# Removed generic lib ignore to keep webapp/lib
+# **/lib
 **/lib64
 **/parts
 **/sdist

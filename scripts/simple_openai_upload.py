@@ -8,6 +8,7 @@ Automatically minifies data and uploads to OpenAI.
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
@@ -16,7 +17,7 @@ from openai import OpenAI
 load_dotenv()
 
 
-def minify_exercisedb():
+def minify_exercisedb() -> Path | None:
     """Create an ultra-minimal version of ExerciseDB data for OpenAI with only exerciseId and name."""
     try:
         # Load original ExerciseDB data
@@ -34,7 +35,7 @@ def minify_exercisedb():
         print(f"📏 Original file size: {original_size / 1024:.1f} KB")
 
         # Ultra-minify the data - keep only exerciseId and name
-        minified_data = []
+        minified_data: list[dict[str, Any]] = []
         for exercise in original_data:
             minified_exercise = {
                 "exerciseId": exercise.get("exerciseId"),
@@ -67,7 +68,7 @@ def minify_exercisedb():
         return None
 
 
-def upload_exercisedb_to_openai():
+def upload_exercisedb_to_openai() -> str | None:
     """Upload ExerciseDB data to OpenAI and return vector_store_id for use with file_search tool."""
     try:
         # Check if OpenAI API key is available
