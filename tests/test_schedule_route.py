@@ -201,11 +201,11 @@ async def test_schedule_route_generation_failure():
                 json={"tg_user_id": 12345, "message": "Create a plan", "context": None},
             )
 
-            # Verify response - should fall back to pattern-based response
+            # Verify response - should return error prompting manual plan creation
             assert response.status_code == 200
             data = response.json()
-            assert data["success"] is True
-            assert data["message"] == "Schedule request received successfully"
+            assert data["success"] is False
+            assert data["message"] == "Failed to generate workout plan"
             assert data["plan"] is None
 
 

@@ -140,56 +140,8 @@ interface AppData {
   lastSaved: string
 }
 
-const SAMPLE_EXERCISES = [
-  "Bench Press",
-  "Squat",
-  "Deadlift",
-  "Overhead Press",
-  "Barbell Row",
-  "Pull-ups",
-  "Dips",
-  "Bicep Curls",
-]
-
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
-const EXERCISE_DATABASE = [
-  // Chest
-  { id: "1", name: "Bench Press", muscle: "Chest", category: "Compound", equipment: "Barbell" },
-  { id: "2", name: "Incline Bench Press", muscle: "Chest", category: "Compound", equipment: "Barbell" },
-  { id: "3", name: "Dumbbell Flyes", muscle: "Chest", category: "Isolation", equipment: "Dumbbell" },
-  { id: "4", name: "Push-ups", muscle: "Chest", category: "Bodyweight", equipment: "None" },
-  { id: "5", name: "Dips", muscle: "Chest", category: "Compound", equipment: "Bodyweight" },
-
-  // Back
-  { id: "6", name: "Deadlift", muscle: "Back", category: "Compound", equipment: "Barbell" },
-  { id: "7", name: "Pull-ups", muscle: "Back", category: "Compound", equipment: "Bodyweight" },
-  { id: "8", name: "Barbell Row", muscle: "Back", category: "Compound", equipment: "Barbell" },
-  { id: "9", name: "Lat Pulldown", muscle: "Back", category: "Compound", equipment: "Cable" },
-  { id: "10", name: "T-Bar Row", muscle: "Back", category: "Compound", equipment: "T-Bar" },
-
-  // Legs
-  { id: "11", name: "Squat", muscle: "Legs", category: "Compound", equipment: "Barbell" },
-  { id: "12", name: "Leg Press", muscle: "Legs", category: "Compound", equipment: "Machine" },
-  { id: "13", name: "Lunges", muscle: "Legs", category: "Compound", equipment: "Dumbbell" },
-  { id: "14", name: "Leg Curls", muscle: "Legs", category: "Isolation", equipment: "Machine" },
-  { id: "15", name: "Calf Raises", muscle: "Legs", category: "Isolation", equipment: "Machine" },
-
-  // Shoulders
-  { id: "16", name: "Overhead Press", muscle: "Shoulders", category: "Compound", equipment: "Barbell" },
-  { id: "17", name: "Lateral Raises", muscle: "Shoulders", category: "Isolation", equipment: "Dumbbell" },
-  { id: "18", name: "Rear Delt Flyes", muscle: "Shoulders", category: "Isolation", equipment: "Dumbbell" },
-  { id: "19", name: "Arnold Press", muscle: "Shoulders", category: "Compound", equipment: "Dumbbell" },
-
-  // Arms
-  { id: "20", name: "Bicep Curls", muscle: "Arms", category: "Isolation", equipment: "Dumbbell" },
-  { id: "21", name: "Tricep Dips", muscle: "Arms", category: "Compound", equipment: "Bodyweight" },
-  { id: "22", name: "Hammer Curls", muscle: "Arms", category: "Isolation", equipment: "Dumbbell" },
-  { id: "23", name: "Close-Grip Bench Press", muscle: "Arms", category: "Compound", equipment: "Barbell" },
-  { id: "24", name: "Tricep Extensions", muscle: "Arms", category: "Isolation", equipment: "Dumbbell" },
-]
-
-const MUSCLE_GROUPS = ["All", "chest", "back", "legs", "shoulders", "arms", "core"]
 
 async function loadPlanFromAPI(tgUserId: number): Promise<Record<string, Exercise[]>> {
   try {
@@ -437,27 +389,32 @@ function AIWorkoutPlanner({
   devUserId: number;
   userLanguage: string;
 }) {
+  // Check if we're in development mode
+  const isDevelopment = typeof window !== "undefined" && !window.Telegram?.WebApp
+  if (isDevelopment) {
   console.log("🔧 AIWorkoutPlanner: Component rendered with telegramWebApp =", telegramWebApp)
   console.log("🔧 AIWorkoutPlanner: telegramWebApp?.initDataUnsafe?.user =", telegramWebApp?.initDataUnsafe?.user)
+  }
   const [prompt, setPrompt] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
   const [suggestions] = useState<string[]>(() => getLocaleValue(userLanguage, "ai.suggestions") || [])
-
-  // Check if we're in development mode
-  const isDevelopment = typeof window !== "undefined" && !window.Telegram?.WebApp
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const generateWorkoutPlan = async (userPrompt: string) => {
     setIsGenerating(true)
+    setErrorMessage(null)
 
     try {
+      if (isDevelopment) {
       console.log("🔧 generateWorkoutPlan: telegramWebApp =", telegramWebApp)
       console.log("🔧 generateWorkoutPlan: telegramWebApp?.initDataUnsafe?.user =", telegramWebApp?.initDataUnsafe?.user)
+      }
       const tgUserId = telegramWebApp?.initDataUnsafe?.user?.id
-      console.log("🔧 generateWorkoutPlan: tgUserId =", tgUserId)
+      if (isDevelopment) console.log("🔧 generateWorkoutPlan: tgUserId =", tgUserId)
 
       // Fallback to development user ID if telegramWebApp is not available
       const userId = tgUserId || (isDevelopment ? devUserId : null)
-      console.log("🔧 generateWorkoutPlan: Using userId =", userId)
+      if (isDevelopment) console.log("🔧 generateWorkoutPlan: Using userId =", userId)
 
       if (!userId) {
         console.error("Telegram user ID not available")
@@ -491,14 +448,11 @@ function AIWorkoutPlanner({
         setPrompt("")
       } else {
         // Show AI response even if no plan was generated
-        console.log("AI Response:", data.response)
+        if (isDevelopment) console.log("AI Response:", data.response)
       }
     } catch (error) {
       console.error("Failed to generate workout plan:", error)
-      // Fallback to local generation if API fails
-      const plan = generateIntelligentPlan(userPrompt)
-      onPlanGenerated(plan)
-      setPrompt("")
+      setErrorMessage("Failed to generate workout plan. Please try again or create a plan manually.")
     } finally {
       setIsGenerating(false)
     }
@@ -536,274 +490,14 @@ function AIWorkoutPlanner({
       })
     }
 
+    if (isDevelopment) {
     console.log("🔧 convertApiPlanToUIFormat: API plan =", apiPlan)
     console.log("🔧 convertApiPlanToUIFormat: Converted UI plan =", uiPlan)
+    }
     return uiPlan
   }
 
-  const generateIntelligentPlan = (prompt: string): Record<string, Exercise[]> => {
-    const lowerPrompt = prompt.toLowerCase()
-
-    // Parse user intent and preferences
-    const isBeginnerFocused = lowerPrompt.includes("beginner") || lowerPrompt.includes("start")
-    const isStrengthFocused = lowerPrompt.includes("strength") || lowerPrompt.includes("powerlifting")
-    const isMuscleBuilding =
-      lowerPrompt.includes("muscle") || lowerPrompt.includes("hypertrophy") || lowerPrompt.includes("building")
-    const isBodyweight =
-      lowerPrompt.includes("bodyweight") || lowerPrompt.includes("home") || lowerPrompt.includes("no equipment")
-    const isPushPullLegs = lowerPrompt.includes("push") && lowerPrompt.includes("pull") && lowerPrompt.includes("legs")
-    const isUpperLower = lowerPrompt.includes("upper") && lowerPrompt.includes("lower")
-    const isFullBody = lowerPrompt.includes("full body") || lowerPrompt.includes("fullbody")
-
-    // Determine workout frequency
-    let workoutDays = 3 // default
-    if (lowerPrompt.includes("5 day") || lowerPrompt.includes("5-day")) workoutDays = 5
-    else if (lowerPrompt.includes("4 day") || lowerPrompt.includes("4-day")) workoutDays = 4
-    else if (lowerPrompt.includes("6 day") || lowerPrompt.includes("6-day")) workoutDays = 6
-
-    const plan: Record<string, Exercise[]> = {}
-
-    if (isPushPullLegs && workoutDays >= 3) {
-      // Push/Pull/Legs split
-      plan["Monday"] = generatePushWorkout(isBeginnerFocused, isBodyweight)
-      plan["Tuesday"] = generatePullWorkout(isBeginnerFocused, isBodyweight)
-      plan["Wednesday"] = generateLegsWorkout(isBeginnerFocused, isBodyweight)
-
-      if (workoutDays >= 6) {
-        plan["Thursday"] = generatePushWorkout(isBeginnerFocused, isBodyweight)
-        plan["Friday"] = generatePullWorkout(isBeginnerFocused, isBodyweight)
-        plan["Saturday"] = generateLegsWorkout(isBeginnerFocused, isBodyweight)
-      }
-    } else if (isUpperLower && workoutDays >= 4) {
-      // Upper/Lower split
-      plan["Monday"] = generateUpperWorkout(isBeginnerFocused, isBodyweight)
-      plan["Tuesday"] = generateLowerWorkout(isBeginnerFocused, isBodyweight)
-      plan["Thursday"] = generateUpperWorkout(isBeginnerFocused, isBodyweight)
-      plan["Friday"] = generateLowerWorkout(isBeginnerFocused, isBodyweight)
-    } else {
-      // Full body or default
-      const fullBodyWorkout = generateFullBodyWorkout(isBeginnerFocused, isStrengthFocused, isBodyweight)
-      plan["Monday"] = fullBodyWorkout
-      plan["Wednesday"] = fullBodyWorkout
-      plan["Friday"] = fullBodyWorkout
-    }
-
-    return plan
-  }
-
-  const generatePushWorkout = (isBeginner: boolean, isBodyweight: boolean): Exercise[] => {
-    const exercises: Exercise[] = []
-
-    if (isBodyweight) {
-      exercises.push(
-        { id: Date.now().toString(), name: "Push-ups", muscle: "Chest", category: "Bodyweight", equipment: "None", sets: isBeginner ? 3 : 4, reps: isBeginner ? 8 : 12, weight: 0 },
-        { id: (Date.now() + 1).toString(), name: "Dips", muscle: "Chest", category: "Compound", equipment: "Bodyweight", sets: 3, reps: isBeginner ? 6 : 10, weight: 0 },
-        { id: (Date.now() + 2).toString(), name: "Pike Push-ups", muscle: "Shoulders", category: "Bodyweight", equipment: "None", sets: 3, reps: isBeginner ? 5 : 8, weight: 0 },
-      )
-    } else {
-      exercises.push(
-        {
-          id: Date.now().toString(),
-          name: "Bench Press",
-          muscle: "Chest",
-          category: "Compound",
-          equipment: "Barbell",
-          sets: isBeginner ? 3 : 4,
-          reps: isBeginner ? 8 : 10,
-          weight: isBeginner ? 95 : 135,
-        },
-        {
-          id: (Date.now() + 1).toString(),
-          name: "Overhead Press",
-          muscle: "Shoulders",
-          category: "Compound",
-          equipment: "Barbell",
-          sets: 3,
-          reps: isBeginner ? 8 : 10,
-          weight: isBeginner ? 65 : 95,
-        },
-        {
-          id: (Date.now() + 2).toString(),
-          name: "Incline Bench Press",
-          muscle: "Chest",
-          category: "Compound",
-          equipment: "Barbell",
-          sets: 3,
-          reps: 10,
-          weight: isBeginner ? 75 : 115,
-        },
-        { id: (Date.now() + 3).toString(), name: "Lateral Raises", muscle: "Shoulders", category: "Isolation", equipment: "Dumbbell", sets: 3, reps: 12, weight: isBeginner ? 15 : 25 },
-      )
-    }
-
-    return exercises
-  }
-
-  const generatePullWorkout = (isBeginner: boolean, isBodyweight: boolean): Exercise[] => {
-    const exercises: Exercise[] = []
-
-    if (isBodyweight) {
-      exercises.push(
-        { id: Date.now().toString(), name: "Pull-ups", muscle: "Back", category: "Compound", equipment: "Bodyweight", sets: isBeginner ? 3 : 4, reps: isBeginner ? 5 : 8, weight: 0 },
-        { id: (Date.now() + 1).toString(), name: "Inverted Rows", muscle: "Back", category: "Compound", equipment: "Bodyweight", sets: 3, reps: isBeginner ? 8 : 12, weight: 0 },
-      )
-    } else {
-      exercises.push(
-        {
-          id: Date.now().toString(),
-          name: "Deadlift",
-          muscle: "Back",
-          category: "Compound",
-          equipment: "Barbell",
-          sets: isBeginner ? 3 : 4,
-          reps: isBeginner ? 5 : 8,
-          weight: isBeginner ? 135 : 185,
-        },
-        { id: (Date.now() + 1).toString(), name: "Pull-ups", muscle: "Back", category: "Compound", equipment: "Bodyweight", sets: 3, reps: isBeginner ? 5 : 8, weight: 0 },
-        { id: (Date.now() + 2).toString(), name: "Barbell Row", muscle: "Back", category: "Compound", equipment: "Barbell", sets: 3, reps: 8, weight: isBeginner ? 95 : 135 },
-        { id: (Date.now() + 3).toString(), name: "Bicep Curls", muscle: "Arms", category: "Isolation", equipment: "Dumbbell", sets: 3, reps: 12, weight: isBeginner ? 20 : 30 },
-      )
-    }
-
-    return exercises
-  }
-
-  const generateLegsWorkout = (isBeginner: boolean, isBodyweight: boolean): Exercise[] => {
-    const exercises: Exercise[] = []
-
-    if (isBodyweight) {
-      exercises.push(
-        {
-          id: Date.now().toString(),
-          name: "Bodyweight Squats",
-          muscle: "Legs",
-          category: "Compound",
-          equipment: "None",
-          sets: isBeginner ? 3 : 4,
-          reps: isBeginner ? 12 : 20,
-          weight: 0,
-        },
-        { id: (Date.now() + 1).toString(), name: "Lunges", muscle: "Legs", category: "Compound", equipment: "Dumbbell", sets: 3, reps: isBeginner ? 10 : 15, weight: 0 },
-        { id: (Date.now() + 2).toString(), name: "Single Leg Calf Raises", muscle: "Legs", category: "Isolation", equipment: "None", sets: 3, reps: 15, weight: 0 },
-      )
-    } else {
-      exercises.push(
-        {
-          id: Date.now().toString(),
-          name: "Squat",
-          muscle: "Legs",
-          category: "Compound",
-          equipment: "Barbell",
-          sets: isBeginner ? 3 : 4,
-          reps: isBeginner ? 8 : 10,
-          weight: isBeginner ? 95 : 135,
-        },
-        {
-          id: (Date.now() + 1).toString(),
-          name: "Romanian Deadlift",
-          muscle: "Legs",
-          category: "Compound",
-          equipment: "Barbell",
-          sets: 3,
-          reps: 10,
-          weight: isBeginner ? 95 : 135,
-        },
-        { id: (Date.now() + 2).toString(), name: "Leg Press", muscle: "Legs", category: "Compound", equipment: "Machine", sets: 3, reps: 12, weight: isBeginner ? 180 : 270 },
-        { id: (Date.now() + 3).toString(), name: "Calf Raises", muscle: "Legs", category: "Isolation", equipment: "Machine", sets: 3, reps: 15, weight: isBeginner ? 135 : 185 },
-      )
-    }
-
-    return exercises
-  }
-
-  const generateUpperWorkout = (isBeginner: boolean, isBodyweight: boolean): Exercise[] => {
-    const exercises: Exercise[] = []
-
-    if (isBodyweight) {
-      exercises.push(
-        { id: Date.now().toString(), name: "Push-ups", muscle: "Chest", category: "Bodyweight", equipment: "None", sets: 3, reps: isBeginner ? 8 : 12, weight: 0 },
-        { id: (Date.now() + 1).toString(), name: "Pull-ups", muscle: "Back", category: "Compound", equipment: "Bodyweight", sets: 3, reps: isBeginner ? 5 : 8, weight: 0 },
-        { id: (Date.now() + 2).toString(), name: "Dips", muscle: "Chest", category: "Compound", equipment: "Bodyweight", sets: 3, reps: isBeginner ? 6 : 10, weight: 0 },
-      )
-    } else {
-      exercises.push(
-        {
-          id: Date.now().toString(),
-          name: "Bench Press",
-          muscle: "Chest",
-          category: "Compound",
-          equipment: "Barbell",
-          sets: 4,
-          reps: isBeginner ? 8 : 10,
-          weight: isBeginner ? 95 : 135,
-        },
-        { id: (Date.now() + 1).toString(), name: "Barbell Row", muscle: "Back", category: "Compound", equipment: "Barbell", sets: 4, reps: 8, weight: isBeginner ? 95 : 135 },
-        { id: (Date.now() + 2).toString(), name: "Overhead Press", muscle: "Shoulders", category: "Compound", equipment: "Barbell", sets: 3, reps: 8, weight: isBeginner ? 65 : 95 },
-        { id: (Date.now() + 3).toString(), name: "Pull-ups", muscle: "Back", category: "Compound", equipment: "Bodyweight", sets: 3, reps: isBeginner ? 5 : 8, weight: 0 },
-      )
-    }
-
-    return exercises
-  }
-
-  const generateLowerWorkout = (isBeginner: boolean, isBodyweight: boolean): Exercise[] => {
-    const exercises: Exercise[] = []
-
-    if (isBodyweight) {
-      exercises.push(
-        { id: Date.now().toString(), name: "Bodyweight Squats", muscle: "Legs", category: "Compound", equipment: "None", sets: 4, reps: isBeginner ? 12 : 20, weight: 0 },
-        { id: (Date.now() + 1).toString(), name: "Lunges", muscle: "Legs", category: "Compound", equipment: "Dumbbell", sets: 3, reps: isBeginner ? 10 : 15, weight: 0 },
-        { id: (Date.now() + 2).toString(), name: "Single Leg Glute Bridges", muscle: "Legs", category: "Isolation", equipment: "None", sets: 3, reps: 12, weight: 0 },
-      )
-    } else {
-      exercises.push(
-        { id: Date.now().toString(), name: "Squat", muscle: "Legs", category: "Compound", equipment: "Barbell", sets: 4, reps: isBeginner ? 8 : 10, weight: isBeginner ? 95 : 135 },
-        { id: (Date.now() + 1).toString(), name: "Deadlift", muscle: "Back", category: "Compound", equipment: "Barbell", sets: 3, reps: 5, weight: isBeginner ? 135 : 185 },
-        { id: (Date.now() + 2).toString(), name: "Leg Press", muscle: "Legs", category: "Compound", equipment: "Machine", sets: 3, reps: 12, weight: isBeginner ? 180 : 270 },
-        { id: (Date.now() + 3).toString(), name: "Leg Curls", muscle: "Legs", category: "Isolation", equipment: "Machine", sets: 3, reps: 12, weight: isBeginner ? 70 : 100 },
-      )
-    }
-
-    return exercises
-  }
-
-  const generateFullBodyWorkout = (isBeginner: boolean, isStrength: boolean, isBodyweight: boolean): Exercise[] => {
-    const exercises: Exercise[] = []
-
-    if (isBodyweight) {
-      exercises.push(
-        { id: Date.now().toString(), name: "Push-ups", muscle: "Chest", category: "Bodyweight", equipment: "None", sets: 3, reps: isBeginner ? 8 : 12, weight: 0 },
-        { id: (Date.now() + 1).toString(), name: "Bodyweight Squats", muscle: "Legs", category: "Compound", equipment: "None", sets: 3, reps: isBeginner ? 12 : 20, weight: 0 },
-        { id: (Date.now() + 2).toString(), name: "Pull-ups", muscle: "Back", category: "Compound", equipment: "Bodyweight", sets: 3, reps: isBeginner ? 5 : 8, weight: 0 },
-        { id: (Date.now() + 3).toString(), name: "Lunges", muscle: "Legs", category: "Compound", equipment: "Dumbbell", sets: 3, reps: isBeginner ? 10 : 15, weight: 0 },
-      )
-    } else if (isStrength) {
-      exercises.push(
-        { id: Date.now().toString(), name: "Squat", muscle: "Legs", category: "Compound", equipment: "Barbell", sets: 5, reps: 5, weight: isBeginner ? 95 : 185 },
-        { id: (Date.now() + 1).toString(), name: "Bench Press", muscle: "Chest", category: "Compound", equipment: "Barbell", sets: 5, reps: 5, weight: isBeginner ? 95 : 155 },
-        { id: (Date.now() + 2).toString(), name: "Deadlift", muscle: "Back", category: "Compound", equipment: "Barbell", sets: 3, reps: 5, weight: isBeginner ? 135 : 225 },
-        { id: (Date.now() + 3).toString(), name: "Overhead Press", muscle: "Shoulders", category: "Compound", equipment: "Barbell", sets: 3, reps: 5, weight: isBeginner ? 65 : 105 },
-      )
-    } else {
-      exercises.push(
-        { id: Date.now().toString(), name: "Squat", muscle: "Legs", category: "Compound", equipment: "Barbell", sets: 3, reps: isBeginner ? 8 : 10, weight: isBeginner ? 95 : 135 },
-        {
-          id: (Date.now() + 1).toString(),
-          name: "Bench Press",
-          muscle: "Chest",
-          category: "Compound",
-          equipment: "Barbell",
-          sets: 3,
-          reps: isBeginner ? 8 : 10,
-          weight: isBeginner ? 95 : 135,
-        },
-        { id: (Date.now() + 2).toString(), name: "Barbell Row", muscle: "Back", category: "Compound", equipment: "Barbell", sets: 3, reps: 8, weight: isBeginner ? 95 : 135 },
-        { id: (Date.now() + 3).toString(), name: "Overhead Press", muscle: "Shoulders", category: "Compound", equipment: "Barbell", sets: 3, reps: 8, weight: isBeginner ? 65 : 95 },
-      )
-    }
-
-    return exercises
-  }
+  // Removed legacy local plan generators; backend is the single source of truth
 
   return (
     <Card>
@@ -827,6 +521,12 @@ function AIWorkoutPlanner({
               {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
           </div>
+
+          {errorMessage && (
+            <div className="text-sm text-red-500">
+              {errorMessage}
+            </div>
+          )}
 
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">{t(userLanguage, "ai.quick_suggestions")}</p>
@@ -874,6 +574,25 @@ function ExerciseSelector({
   const [exercises, setExercises] = useState<Exercise[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [categories, setCategories] = useState<string[]>(["All"]) // dynamic categories
+
+  // Load categories once
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const resp = await fetch(apiUrl(`/api/v1/exercises/categories`))
+        if (!resp.ok) return
+        const data = await resp.json()
+        const items: string[] = Array.isArray(data?.items) ? data.items : []
+        // Ensure capitalization for display
+        const display = items.map((c) => c.trim()).filter(Boolean)
+        setCategories(["All", ...display])
+      } catch {
+        // ignore; keep default
+      }
+    }
+    loadCategories()
+  }, [])
 
   const debouncedSearch = useCallback(
     debounce(async (term: string, muscle: string) => {
@@ -891,7 +610,7 @@ function ExerciseSelector({
           // Search by query
           url = apiUrl(`/api/v1/exercises/search?q=${encodeURIComponent(term)}&limit=20`)
         } else if (muscle !== "All") {
-          // Search by category
+          // Search by category (use normalized value)
           url = apiUrl(`/api/v1/exercises/category/${encodeURIComponent(muscle)}?limit=20`)
         }
 
@@ -944,7 +663,7 @@ function ExerciseSelector({
           />
         </div>
         <div className="flex gap-2 flex-wrap">
-          {MUSCLE_GROUPS.map((muscle) => (
+          {categories.map((muscle) => (
             <Button
               key={muscle}
               variant={selectedMuscle === muscle ? "default" : "outline"}
@@ -1010,10 +729,7 @@ function ExerciseSelector({
                 </p>
                 <div className="flex gap-2 mt-2">
                   <Badge variant="secondary" className="text-xs capitalize">
-                    {exercise.muscle}
-                  </Badge>
-                  <Badge variant="outline" className="text-xs">
-                    {exercise.category}
+                    {(exercise as any).body_parts?.[0] || exercise.muscle || exercise.category || "-"}
                   </Badge>
                   <Badge variant="outline" className="text-xs">
                     {exercise.equipment}
@@ -1043,7 +759,9 @@ function ExercisePreviewDialog({ exercise, onClose, userLanguage }: { exercise: 
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{exercise.name}</DialogTitle>
-          <DialogDescription>{exercise.category || exercise.bodyPart || exercise.equipment || t(userLanguage, "exercise.details")}</DialogDescription>
+          <DialogDescription>
+            {(exercise as any).body_parts?.[0] || exercise.category || exercise.equipment || t(userLanguage, "exercise.details")}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           {exercise.image && (
@@ -1052,11 +770,11 @@ function ExercisePreviewDialog({ exercise, onClose, userLanguage }: { exercise: 
           <div className="grid grid-cols-3 gap-2 text-sm">
             <div>
               <span className="text-muted-foreground">{t(userLanguage, "exercise.target")}</span>
-              <span className="ml-2 font-medium">{exercise.target || exercise.muscle || '-'}</span>
+              <span className="ml-2 font-medium">{(exercise as any).target_muscles?.[0] || exercise.muscle || '-'}</span>
             </div>
             <div>
               <span className="text-muted-foreground">{t(userLanguage, "exercise.body_part")}</span>
-              <span className="ml-2 font-medium">{exercise.bodyPart || exercise.category || '-'}</span>
+              <span className="ml-2 font-medium">{(exercise as any).body_parts?.[0] || exercise.category || '-'}</span>
             </div>
             <div>
               <span className="text-muted-foreground">{t(userLanguage, "exercise.equipment")}</span>
@@ -1387,17 +1105,19 @@ export default function WorkoutTracker() {
       } else if (isDevelopment) {
         // Development mode - create mock Telegram WebApp
         const mockTg = createMockTelegramWebApp(devUserId)
+        if (isDevelopment) {
         console.log("🔧 Development Mode: Created mock Telegram WebApp with user ID:", mockTg.initDataUnsafe.user?.id)
         console.log("🔧 Development Mode: Mock object:", mockTg)
         console.log("🔧 Development Mode: About to set telegramWebApp state")
+        }
 
         // Force immediate state update
         setTelegramWebApp(mockTg)
-        console.log("🔧 Development Mode: setTelegramWebApp called")
+        if (isDevelopment) console.log("🔧 Development Mode: setTelegramWebApp called")
 
         // Mock the window.Telegram object for development
         window.Telegram = { WebApp: mockTg }
-        console.log("🔧 Development Mode: window.Telegram set to:", window.Telegram)
+        if (isDevelopment) console.log("🔧 Development Mode: window.Telegram set to:", window.Telegram)
 
         // Mark as initialized after setting the mock
         setIsInitialized(true)
@@ -1415,15 +1135,15 @@ export default function WorkoutTracker() {
       const mockTg = createMockTelegramWebApp(devUserId)
       setTelegramWebApp(mockTg)
       window.Telegram = { WebApp: mockTg }
-      console.log("🔧 Development Mode: Created mock Telegram WebApp with user ID:", devUserId)
+      if (isDevelopment) console.log("🔧 Development Mode: Created mock Telegram WebApp with user ID:", devUserId)
     }
   }, [devUserId, isDevelopment, telegramWebApp])
 
   // Debug useEffect to monitor state changes
   useEffect(() => {
-    console.log("🔧 State Update: isInitialized =", isInitialized, "telegramWebApp =", telegramWebApp)
+    if (isDevelopment) console.log("🔧 State Update: isInitialized =", isInitialized, "telegramWebApp =", telegramWebApp)
     if (telegramWebApp) {
-      console.log("🔧 State Update: telegramWebApp.initDataUnsafe.user =", telegramWebApp.initDataUnsafe?.user)
+      if (isDevelopment) console.log("🔧 State Update: telegramWebApp.initDataUnsafe.user =", telegramWebApp.initDataUnsafe?.user)
     }
   }, [isInitialized, telegramWebApp])
 
@@ -1481,7 +1201,7 @@ export default function WorkoutTracker() {
       if (currentUserId && (currentUserId !== lastUserIdRef.current || !dataLoadedRef.current)) {
         lastUserIdRef.current = currentUserId
         dataLoadedRef.current = true
-        console.log("🔧 Loading data for user ID:", currentUserId)
+        if (isDevelopment) console.log("🔧 Loading data for user ID:", currentUserId)
         initializeApp()
       }
     }
@@ -1588,24 +1308,26 @@ export default function WorkoutTracker() {
   }
 
   const handleAIPlanGenerated = async (generatedPlan: Record<string, Exercise[]>) => {
-    console.log("🔧 handleAIPlanGenerated: Received plan =", generatedPlan)
+    if (isDevelopment) console.log("🔧 handleAIPlanGenerated: Received plan =", generatedPlan)
     setWeeklyPlan(generatedPlan)
-    console.log("🔧 handleAIPlanGenerated: Set weeklyPlan state")
+    if (isDevelopment) console.log("🔧 handleAIPlanGenerated: Set weeklyPlan state")
 
     if (telegramWebApp?.initDataUnsafe?.user?.id) {
       const tgUserId = telegramWebApp.initDataUnsafe.user.id
       await savePlanToAPI(tgUserId, generatedPlan)
-      console.log("🔧 handleAIPlanGenerated: Plan saved to API")
+      if (isDevelopment) console.log("🔧 handleAIPlanGenerated: Plan saved to API")
     }
 
-    console.log("AI workout plan generated successfully!")
+    if (isDevelopment) console.log("AI workout plan generated successfully!")
   }
 
   // Debug effect to monitor weeklyPlan changes
   useEffect(() => {
+    if (isDevelopment) {
     console.log("🔧 weeklyPlan state changed:", weeklyPlan)
     console.log("🔧 selectedDay:", selectedDay)
     console.log("🔧 weeklyPlan[selectedDay]:", weeklyPlan[selectedDay])
+    }
   }, [weeklyPlan, selectedDay])
 
   const toggleWorkoutTimer = () => {
@@ -2289,7 +2011,7 @@ export default function WorkoutTracker() {
                                         <span className="text-sm text-muted-foreground">{session?.date}</span>
                                         <div className="flex items-center gap-2">
                                           <Badge variant="outline" className="text-xs">
-                                            {session?.weight} {t(userLanguage, "units.lbs")} × {session?.reps}
+                                            {session?.reps} × {session?.weight} {t(userLanguage, "units.lbs")}
                                           </Badge>
                                           {index < progress.length - 1 && (
                                             <div className="flex items-center">

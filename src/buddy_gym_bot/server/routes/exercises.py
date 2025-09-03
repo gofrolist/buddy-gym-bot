@@ -37,6 +37,36 @@ async def exercises_search(
     return {"ok": True, "items": items, "query": q, "total": len(items)}
 
 
+@router.get("/exercises/categories")
+async def exercises_categories() -> dict:
+    """
+    List available exercise body part categories.
+
+    This powers the UI category filter without hardcoding.
+    """
+    if not SETTINGS.FF_EXERCISEDB:
+        raise HTTPException(status_code=503, detail="ExerciseDB disabled")
+
+    client = ExerciseDBClient()
+    try:
+        # Leverage the local bodyparts data from ExerciseDBClient
+        # It provides human-readable body part names.
+        categories = [
+            (bp.get("name") or "").strip()
+            for bp in client._load_bodyparts_data()
+            if (bp.get("name") or "").strip()
+        ]
+        # Normalize to lowercase URL-friendly values for API usage
+        normalized = sorted({c.lower() for c in categories})
+    except Exception as err:
+        logging.exception("Failed to load exercise categories")
+        raise HTTPException(status_code=500, detail="Failed to load categories") from err
+    finally:
+        await client.close()
+
+    return {"ok": True, "items": normalized, "total": len(normalized)}
+
+
 @router.get("/exercises/category/{category}")
 async def exercises_by_category(category: str, limit: int = Query(20, ge=1, le=100)) -> dict:
     """

@@ -198,6 +198,8 @@ class ExerciseDBClient:
                                 "equipment": exercise.get("equipments", [""])[0]
                                 if exercise.get("equipments")
                                 else "",
+                                "target_muscles": exercise.get("targetMuscles", []),
+                                "body_parts": exercise.get("bodyParts", []),
                                 "instructions": exercise.get("instructions", []),
                                 "image": self.get_external_media_url(exercise_id),
                             }
@@ -230,6 +232,8 @@ class ExerciseDBClient:
                                 if exercise.get("bodyParts")
                                 else "",
                                 "equipment": equipments[0] if equipments else "",
+                                "target_muscles": exercise.get("targetMuscles", []),
+                                "body_parts": exercise.get("bodyParts", []),
                                 "instructions": exercise.get("instructions", []),
                                 "image": self.get_external_media_url(exercise_id),
                             }
