@@ -8,14 +8,8 @@ services:
     env_file:
       - .env
     environment:
-      USE_WEBHOOK: "false"            # local bot should poll, not use webhooks
       WEBAPP_URL: "https://4c66994fe6f5.ngrok-free.app"
-      FF_AUTO_I18N: "true"
-      FF_REFERRALS: "true"
-      FF_REMINDERS: "true"
-      FF_SHARE_PNG: "true"
-      FF_ADMIN_ALERTS: "false"
-      FF_EXERCISEDB: "false"
+
 
   bot:
     build: .
@@ -27,7 +21,6 @@ services:
       - .env
     environment:
       USE_WEBHOOK: "false"            # force polling locally
-      # WEBAPP_URL: "http://localhost:8080/webapp/"
       FF_AUTO_I18N: "true"
       FF_REFERRALS: "true"
       FF_REMINDERS: "true"
