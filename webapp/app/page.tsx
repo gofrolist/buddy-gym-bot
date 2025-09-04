@@ -769,7 +769,11 @@ function ExercisePreviewDialog({ exercise, onClose, userLanguage, aliasEnabled =
   const [aliasValue, setAliasValue] = useState<string>(initialAlias || "")
   return (
     <Dialog open={!!exercise} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent
+        className={
+          "pt-safe pb-safe max-h-[calc(var(--tg-viewport-height,100vh)-var(--app-safe-top,0px)-var(--app-safe-bottom,0px))] overflow-y-auto"
+        }
+      >
         <DialogHeader>
           <DialogTitle>{exercise.name}</DialogTitle>
           <DialogDescription>
