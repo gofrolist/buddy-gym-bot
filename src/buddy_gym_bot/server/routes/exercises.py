@@ -12,31 +12,6 @@ from ...exercisedb import ExerciseDBClient
 router = APIRouter()
 
 
-@router.get("/exercises/search")
-async def exercises_search(
-    q: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le=50)
-) -> dict:
-    """
-    Search for exercises using ExerciseDB. Returns a list of matching exercises.
-    Perfect for manual plan editing where users type exercise names.
-    """
-    # Feature flag: ExerciseDB must be enabled
-    if not SETTINGS.FF_EXERCISEDB:
-        raise HTTPException(status_code=503, detail="ExerciseDB disabled")
-
-    client = ExerciseDBClient()
-    try:
-        items = await client.search_exercises_for_user(q, limit=limit)
-    except Exception as err:
-        logging.exception("ExerciseDB search failed")
-        # mask remote errors
-        raise HTTPException(status_code=502, detail="Upstream error") from err
-    finally:
-        await client.close()
-
-    return {"ok": True, "items": items, "query": q, "total": len(items)}
-
-
 @router.get("/exercises/categories")
 async def exercises_categories() -> dict:
     """
@@ -65,6 +40,66 @@ async def exercises_categories() -> dict:
         await client.close()
 
     return {"ok": True, "items": normalized, "total": len(normalized)}
+
+
+@router.get("/exercises/search")
+async def exercises_search(
+    q: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le=50)
+) -> dict:
+    """
+    Search for exercises using ExerciseDB. Returns a list of matching exercises.
+    Perfect for manual plan editing where users type exercise names.
+    """
+    # Feature flag: ExerciseDB must be enabled
+    if not SETTINGS.FF_EXERCISEDB:
+        raise HTTPException(status_code=503, detail="ExerciseDB disabled")
+
+    client = ExerciseDBClient()
+    try:
+        items = await client.search_exercises_for_user(q, limit=limit)
+    except Exception as err:
+        logging.exception("ExerciseDB search failed")
+        # mask remote errors
+        raise HTTPException(status_code=502, detail="Upstream error") from err
+    finally:
+        await client.close()
+
+    return {"ok": True, "items": items, "query": q, "total": len(items)}
+
+
+@router.get("/exercises/{exercise_id}")
+async def exercise_by_id(exercise_id: str) -> dict:
+    """
+    Fetch a single exercise by its ExerciseDB ID.
+
+    UI should prefer this endpoint when an exercise_db_id is available from the plan.
+    """
+    if not SETTINGS.FF_EXERCISEDB:
+        raise HTTPException(status_code=503, detail="ExerciseDB disabled")
+
+    client = ExerciseDBClient()
+    try:
+        for exercise in client.exercises_data:
+            if exercise.get("exerciseId") == exercise_id:
+                body_parts = exercise.get("bodyParts", [])
+                equipments = exercise.get("equipments", [])
+                return {
+                    "ok": True,
+                    "item": {
+                        "id": exercise_id,
+                        "name": exercise.get("name"),
+                        "category": body_parts[0] if body_parts else "",
+                        "equipment": equipments[0] if equipments else "",
+                        "instructions": exercise.get("instructions", []),
+                        "target_muscles": exercise.get("targetMuscles", []),
+                        "body_parts": body_parts,
+                        "equipments": equipments,
+                        "image": client.get_external_media_url(exercise_id),
+                    },
+                }
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    finally:
+        await client.close()
 
 
 @router.get("/exercises/category/{category}")

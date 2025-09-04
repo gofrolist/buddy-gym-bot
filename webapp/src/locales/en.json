@@ -32,7 +32,12 @@
     "body_part": "Body Part:",
     "equipment": "Equipment:",
     "instructions": "Instructions:",
-    "close": "Close"
+    "close": "Close",
+    "alias": "Alias",
+    "relink": "Relink"
+  },
+  "common": {
+    "save": "Save"
   },
   "plan": {
     "title": "Weekly Plan",

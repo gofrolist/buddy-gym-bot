@@ -20,6 +20,8 @@ import {
   TrendingUp,
   Award,
   BarChart3,
+  Pencil,
+  Link2,
   Target,
   Sparkles,
   Send,
@@ -93,12 +95,14 @@ declare global {
 interface Exercise {
   id: string
   name: string
+  alias?: string
   muscle: string
   category: string
   equipment: string
   sets?: number
   reps?: number
   weight?: number
+  dbId?: string
 }
 
 interface APIResponse {
@@ -120,6 +124,7 @@ interface WorkoutExercise {
   id: string
   name: string
   sets: WorkoutSet[]
+  dbId?: string
 }
 
 interface WorkoutSession {
@@ -483,8 +488,9 @@ function AIWorkoutPlanner({
             id: Date.now().toString() + Math.random(),
             name: exercise.name || exercise.exercise_name,
             sets: exercise.sets || 3,
-            reps: exercise.reps || 10,
+            reps: parseRepsToNumber(exercise.reps) || 10,
             weight: exercise.weight || 0,
+            dbId: exercise.exercise_db_id || undefined,
           }))
         }
       })
@@ -747,13 +753,18 @@ function ExerciseSelector({
           ))}
         </div>
       </div>
-      <ExercisePreviewDialog exercise={exercisePreview} onClose={() => setExercisePreview(null)} userLanguage={userLanguage} />
+      <ExercisePreviewDialog
+        exercise={exercisePreview}
+        onClose={() => setExercisePreview(null)}
+        userLanguage={userLanguage}
+      />
     </div>
   )
 }
 
-function ExercisePreviewDialog({ exercise, onClose, userLanguage }: { exercise: any | null; onClose: () => void; userLanguage: string }) {
+function ExercisePreviewDialog({ exercise, onClose, userLanguage, aliasEnabled = false, initialAlias = "", onAliasSave, onRelink }: { exercise: any | null; onClose: () => void; userLanguage: string; aliasEnabled?: boolean; initialAlias?: string; onAliasSave?: (alias: string) => void; onRelink?: () => void }) {
   if (!exercise) return null
+  const [aliasValue, setAliasValue] = useState<string>(initialAlias || "")
   return (
     <Dialog open={!!exercise} onOpenChange={onClose}>
       <DialogContent>
@@ -791,8 +802,27 @@ function ExercisePreviewDialog({ exercise, onClose, userLanguage }: { exercise: 
               </div>
             </div>
           )}
+
+          {aliasEnabled && (
+            <div className="mt-3">
+              <p className="font-semibold mb-1">{t(userLanguage, "exercise.alias") || "Alias"}</p>
+              <div className="flex gap-2">
+                <Input value={aliasValue} onChange={(e) => setAliasValue(e.target.value)} placeholder={exercise.name} />
+                <Button size="sm" onClick={() => onAliasSave && onAliasSave(aliasValue.trim())}>
+                  {t(userLanguage, "common.save") || "Save"}
+                </Button>
+              </div>
+            </div>
+          )}
+
         </div>
-        <DialogFooter>
+        <DialogFooter className="flex-row justify-between sm:justify-between">
+          {aliasEnabled && onRelink && (
+            <Button variant="outline" onClick={() => onRelink()}>
+              <Link2 className="w-4 h-4 mr-2" />
+              {t(userLanguage, "exercise.relink") || "Relink"}
+            </Button>
+          )}
           <Button onClick={onClose} variant="outline">
             {t(userLanguage, "exercise.close")}
           </Button>
@@ -808,6 +838,16 @@ function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
     if (timeout) clearTimeout(timeout)
     timeout = setTimeout(() => func(...args), wait)
   }) as T
+}
+
+// Coerce reps input to a single number: supports ranges like "12-15" by taking the first number
+function parseRepsToNumber(value: any): number {
+  if (typeof value === "number" && !Number.isNaN(value)) return value
+  if (typeof value === "string") {
+    const match = value.match(/\d+/)
+    if (match) return Number.parseInt(match[0], 10)
+  }
+  return 0
 }
 
 function calculateWorkoutStats(workoutHistory: WorkoutSession[]) {
@@ -1031,15 +1071,26 @@ export default function WorkoutTracker() {
 
   const [devUserId, setDevUserId] = useState<number>(123456789)
   const [planExercisePreview, setPlanExercisePreview] = useState<any | null>(null)
+  const [linkingExercise, setLinkingExercise] = useState<{ day: string; exerciseId: string } | null>(null)
+  const [activePlanExercise, setActivePlanExercise] = useState<{ day: string; exerciseId: string; alias?: string } | null>(null)
 
-  // Helper: fetch full exercise info by name from API (first match)
-  const fetchExerciseDetailsByName = useCallback(async (name: string) => {
+  // Helper: fetch full exercise info, prefer ID endpoint, fallback to name search
+  const fetchExerciseDetails = useCallback(async (opts: { id?: string; name?: string }) => {
     try {
-      const resp = await fetch(apiUrl(`/api/v1/exercises/search?q=${encodeURIComponent(name)}&limit=1`))
-      if (!resp.ok) return null
-      const data = await resp.json()
-      const item = (data?.items && data.items[0]) || null
-      return item
+      if (opts.id) {
+        const resp = await fetch(apiUrl(`/api/v1/exercises/${encodeURIComponent(opts.id)}`))
+        if (resp.ok) {
+          const data = await resp.json()
+          return data?.item || null
+        }
+      }
+      if (opts.name) {
+        const resp = await fetch(apiUrl(`/api/v1/exercises/search?q=${encodeURIComponent(opts.name)}&limit=1`))
+        if (!resp.ok) return null
+        const data = await resp.json()
+        return (data?.items && data.items[0]) || null
+      }
+      return null
     } catch {
       return null
     }
@@ -1054,6 +1105,7 @@ export default function WorkoutTracker() {
   const dataLoadedRef = useRef<boolean>(false)
   const initialLoadRef = useRef<boolean>(true)
   const lastUserIdRef = useRef<number | null>(null)
+  const [isNumericEditing, setIsNumericEditing] = useState<boolean>(false)
 
   useEffect(() => {
     // Initialize Telegram WebApp
@@ -1146,6 +1198,38 @@ export default function WorkoutTracker() {
       if (isDevelopment) console.log("🔧 State Update: telegramWebApp.initDataUnsafe.user =", telegramWebApp.initDataUnsafe?.user)
     }
   }, [isInitialized, telegramWebApp])
+
+  // Hide bottom navigation when numeric inputs are focused (mobile-friendly)
+  useEffect(() => {
+    const handleFocusIn = (event: FocusEvent) => {
+      const target = event.target as HTMLInputElement | null
+      if (!target) return
+      const tag = target.tagName.toLowerCase()
+      if (tag !== "input") return
+
+      const attrInputMode = (target.getAttribute("inputmode") || "").toLowerCase()
+      const isNumeric =
+        target.type === "number" ||
+        (typeof target.inputMode === "string" && target.inputMode.toLowerCase() === "numeric") ||
+        attrInputMode === "numeric"
+
+      if (isNumeric) setIsNumericEditing(true)
+    }
+
+    const handleFocusOut = (event: FocusEvent) => {
+      const target = event.target as HTMLElement | null
+      if (!target) return
+      if (target.tagName.toLowerCase() !== "input") return
+      setIsNumericEditing(false)
+    }
+
+    window.addEventListener("focusin", handleFocusIn as any)
+    window.addEventListener("focusout", handleFocusOut as any)
+    return () => {
+      window.removeEventListener("focusin", handleFocusIn as any)
+      window.removeEventListener("focusout", handleFocusOut as any)
+    }
+  }, [])
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -1298,6 +1382,40 @@ export default function WorkoutTracker() {
     }
   }, [currentWorkout, workoutTimer, isWorkoutActive])
 
+  // Persist active workout on app/tab close or backgrounding
+  useEffect(() => {
+    const persist = () => {
+      try {
+        if (isWorkoutActive && currentWorkout.length > 0) {
+          localStorage.setItem(
+            "currentWorkout",
+            JSON.stringify({
+              workout: currentWorkout,
+              timer: workoutTimer,
+              timestamp: Date.now(),
+            }),
+          )
+        }
+      } catch (e) {
+        // no-op
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") persist()
+    }
+
+    window.addEventListener("beforeunload", persist)
+    window.addEventListener("pagehide", persist)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener("beforeunload", persist)
+      window.removeEventListener("pagehide", persist)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [isWorkoutActive, currentWorkout, workoutTimer])
+
   const handleDataChange = () => {
     // Force reload data from storage
     const appData = loadAppData()
@@ -1349,6 +1467,7 @@ export default function WorkoutTracker() {
       sets: 3,
       reps: 10,
       weight: 0,
+      dbId: (exercise as any).id,
     }
 
     setWeeklyPlan((prev) => ({
@@ -1369,11 +1488,12 @@ export default function WorkoutTracker() {
     const dayPlan = weeklyPlan[day] || []
     const workoutExercises: WorkoutExercise[] = dayPlan.map((exercise) => ({
       id: exercise.id,
-      name: exercise.name,
+      name: exercise.alias || exercise.name,
+      dbId: exercise.dbId,
       sets: Array(exercise.sets || 3)
         .fill(null)
         .map(() => ({
-          reps: exercise.reps || 10,
+          reps: parseRepsToNumber(exercise.reps) || 10,
           weight: exercise.weight || 0,
           completed: false,
         })),
@@ -1383,6 +1503,20 @@ export default function WorkoutTracker() {
     setActiveTab("workout")
     setIsWorkoutActive(true)
     setIsTimerRunning(true)
+
+    // Persist immediately so a quick close/reopen restores the session
+    try {
+      localStorage.setItem(
+        "currentWorkout",
+        JSON.stringify({
+          workout: workoutExercises,
+          timer: 0,
+          timestamp: Date.now(),
+        }),
+      )
+    } catch (e) {
+      // no-op
+    }
   }
 
   const updateWorkoutSet = (exerciseId: string, setIndex: number, field: "reps" | "weight", value: number) => {
@@ -1420,7 +1554,8 @@ export default function WorkoutTracker() {
     // Log to API if completing the set and Telegram WebApp is available
     if (newCompletedState && telegramWebApp?.initDataUnsafe?.user?.id) {
       const tgUserId = telegramWebApp.initDataUnsafe.user.id
-      await logWorkoutSet(tgUserId, exercise.name, set.weight, set.reps, true)
+      const repsNumber = parseRepsToNumber(set.reps)
+      await logWorkoutSet(tgUserId, exercise.name, set.weight, repsNumber, true)
     }
   }
 
@@ -1514,7 +1649,7 @@ export default function WorkoutTracker() {
       {/* Main Content with Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-[calc(100vh-80px)]">
         {/* Content Area */}
-        <div className="flex-1 px-0 pb-20 overflow-y-auto">
+        <div className={`flex-1 px-0 ${isNumericEditing ? "pb-2" : "pb-20"} overflow-y-auto`}>
           <TabsContent value="plan" className="space-y-4 mt-0">
             <div className="flex items-center justify-between px-4">
               <h2 className="text-xl font-semibold">{t(userLanguage, "plan.title")}</h2>
@@ -1602,7 +1737,8 @@ export default function WorkoutTracker() {
                         className="font-medium text-left underline decoration-dotted hover:opacity-80 cursor-pointer"
                         onClick={async (e) => {
                           e.stopPropagation()
-                          const details = await fetchExerciseDetailsByName(exercise.name)
+                          const details = await fetchExerciseDetails({ id: (exercise as any).dbId, name: exercise.name })
+                          setActivePlanExercise({ day: selectedDay, exerciseId: exercise.id, alias: exercise.alias })
                           setPlanExercisePreview(
                             details || {
                               name: exercise.name,
@@ -1614,7 +1750,7 @@ export default function WorkoutTracker() {
                           )
                         }}
                       >
-                        {exercise.name}
+                        {exercise.alias || exercise.name}
                       </button>
                     </div>
 
@@ -1676,7 +1812,14 @@ export default function WorkoutTracker() {
                 )}
 
                 <div className="space-y-2 pt-2 border-t">
-                  <Button onClick={() => setShowExerciseSelector(true)} variant="outline" className="w-full">
+                  <Button
+                    onClick={() => {
+                      setShowExerciseSelector(true)
+                      setLinkingExercise(null)
+                    }}
+                    variant="outline"
+                    className="w-full"
+                  >
                     <Plus className="w-4 h-4 mr-2" />
                     {t(userLanguage, "exercise.add_exercise")}
                   </Button>
@@ -1685,7 +1828,31 @@ export default function WorkoutTracker() {
 
               {showExerciseSelector && (
                 <ExerciseSelector
-                  onSelectExercise={(exercise) => addExerciseToPlan(selectedDay, exercise)}
+                  onSelectExercise={(exercise) => {
+                    if (linkingExercise && linkingExercise.day === selectedDay) {
+                      const { exerciseId } = linkingExercise
+                      setWeeklyPlan((prev) => ({
+                        ...prev,
+                        [selectedDay]: prev[selectedDay]?.map((ex) =>
+                          ex.id === exerciseId
+                            ? {
+                                ...ex,
+                                name: exercise.name,
+                                alias: ex.alias || exercise.name,
+                                muscle: exercise.muscle,
+                                category: exercise.category,
+                                equipment: exercise.equipment,
+                                dbId: (exercise as any).id,
+                              }
+                            : ex,
+                        ) || [],
+                      }))
+                      setLinkingExercise(null)
+                      setShowExerciseSelector(false)
+                      return
+                    }
+                    addExerciseToPlan(selectedDay, exercise)
+                  }}
                   onClose={() => setShowExerciseSelector(false)}
                   userLanguage={userLanguage}
                 />
@@ -1743,7 +1910,7 @@ export default function WorkoutTracker() {
                           className="font-medium text-left underline decoration-dotted hover:opacity-80 cursor-pointer"
                           onClick={async (e) => {
                             e.stopPropagation()
-                            const details = await fetchExerciseDetailsByName(exercise.name)
+                            const details = await fetchExerciseDetails({ id: (exercise as any).dbId, name: exercise.name })
                             setPlanExercisePreview(
                               details || {
                                 name: exercise.name,
@@ -1850,6 +2017,14 @@ export default function WorkoutTracker() {
                   <Button
                   onClick={() => {
                     setCurrentWorkout([])
+                    setIsWorkoutActive(false)
+                    setIsTimerRunning(false)
+                    setWorkoutTimer(0)
+                    try {
+                      localStorage.removeItem("currentWorkout")
+                    } catch (e) {
+                      // no-op
+                    }
                     setActiveTab("plan")
                   }}
                   variant="outline"
@@ -2083,7 +2258,7 @@ export default function WorkoutTracker() {
 
         {/* Bottom Navigation */}
         <div
-          className="fixed bottom-0 left-0 right-0 bg-card border-t border-border pb-safe"
+          className={`fixed bottom-0 left-0 right-0 bg-card border-t border-border pb-safe ${isNumericEditing ? "hidden" : ""}`}
           style={{ backgroundColor: telegramWebApp?.themeParams.secondary_bg_color || undefined }}
         >
           <TabsList className="grid w-full grid-cols-3 h-16 bg-transparent">
@@ -2124,7 +2299,28 @@ export default function WorkoutTracker() {
         </div>
       </Tabs>
       {/* Preview dialog for exercises already in the plan */}
-      <ExercisePreviewDialog exercise={planExercisePreview} onClose={() => setPlanExercisePreview(null)} userLanguage={userLanguage} />
+      <ExercisePreviewDialog
+        exercise={planExercisePreview}
+        onClose={() => setPlanExercisePreview(null)}
+        userLanguage={userLanguage}
+        aliasEnabled={!!activePlanExercise}
+        initialAlias={activePlanExercise?.alias || ""}
+        onAliasSave={(newAlias) => {
+          if (!activePlanExercise) return
+          setWeeklyPlan((prev) => ({
+            ...prev,
+            [activePlanExercise.day]: prev[activePlanExercise.day]?.map((ex) =>
+              ex.id === activePlanExercise.exerciseId ? { ...ex, alias: newAlias || undefined } : ex,
+            ) || [],
+          }))
+        }}
+        onRelink={() => {
+          if (!activePlanExercise) return
+          setLinkingExercise({ day: activePlanExercise.day, exerciseId: activePlanExercise.exerciseId })
+          setPlanExercisePreview(null)
+          setShowExerciseSelector(true)
+        }}
+      />
     </div>
   )
 }
