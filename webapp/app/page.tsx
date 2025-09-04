@@ -56,6 +56,8 @@ interface TelegramWebApp {
   isExpanded: boolean
   viewportHeight: number
   viewportStableHeight: number
+  // Newer clients expose safe area insets
+  // Using 'any' access below to avoid breaking older clients
   expand(): void
   close(): void
   ready(): void
@@ -1142,6 +1144,47 @@ export default function WorkoutTracker() {
 
         // Ready the app
         tg.ready()
+
+        // Bind viewport and safe area CSS variables so our utilities work
+        const applyTelegramViewportCssVars = () => {
+          try {
+            const root = document.documentElement
+            const anyTg: any = tg as any
+            if (typeof tg.viewportHeight === "number") {
+              root.style.setProperty("--tg-viewport-height", `${tg.viewportHeight}px`)
+            }
+            if (typeof tg.viewportStableHeight === "number") {
+              root.style.setProperty("--tg-viewport-stable-height", `${tg.viewportStableHeight}px`)
+            }
+
+            const safe = anyTg.safeAreaInset || anyTg.safe_area_inset || null
+            const contentSafe = anyTg.contentSafeAreaInset || anyTg.content_safe_area_inset || null
+
+            const setInset = (prefix: string, obj: any) => {
+              if (!obj) return
+              if (typeof obj.top === "number") root.style.setProperty(`--${prefix}-top`, `${obj.top}px`)
+              if (typeof obj.bottom === "number") root.style.setProperty(`--${prefix}-bottom`, `${obj.bottom}px`)
+              if (typeof obj.left === "number") root.style.setProperty(`--${prefix}-left`, `${obj.left}px`)
+              if (typeof obj.right === "number") root.style.setProperty(`--${prefix}-right`, `${obj.right}px`)
+            }
+
+            setInset("tg-safe-area-inset", safe)
+            setInset("tg-content-safe-area-inset", contentSafe)
+          } catch {
+            // no-op
+          }
+        }
+
+        applyTelegramViewportCssVars()
+
+        // Listen for Telegram viewport/safe area changes (Bot API 8.0+)
+        try {
+          tg.onEvent && tg.onEvent("safeAreaChanged", applyTelegramViewportCssVars)
+          tg.onEvent && tg.onEvent("contentSafeAreaChanged", applyTelegramViewportCssVars)
+          tg.onEvent && tg.onEvent("viewportChanged", applyTelegramViewportCssVars as any)
+        } catch {
+          // ignore if not supported
+        }
 
         // Handle theme changes
         tg.onEvent("themeChanged", () => {
