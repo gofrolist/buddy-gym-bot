@@ -1671,7 +1671,7 @@ export default function WorkoutTracker() {
       style={{ backgroundColor: telegramWebApp?.themeParams.bg_color || undefined }}
     >
       {telegramWebApp?.initDataUnsafe.user && (
-        <div className="bg-primary/10 p-2 text-center text-sm">
+        <div className="bg-primary/10 p-2 text-center text-sm" style={{ paddingTop: "var(--tg-content-safe-area-inset-top, var(--tg-safe-area-inset-top, 0px))" }}>
           {t(userLanguage, "welcome.greeting_name", { name: telegramWebApp.initDataUnsafe.user.first_name })}
           {userLanguage !== "en" && <span className="ml-2">{t(userLanguage, "welcome.language", { lang: userLanguage.toUpperCase() })}</span>}
           {isDevelopment && (
