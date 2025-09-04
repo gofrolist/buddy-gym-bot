@@ -650,7 +650,7 @@ function ExerciseSelector({
   }, [debouncedSearch])
 
   return (
-    <div className="fixed inset-0 bg-background z-50 flex flex-col">
+    <div className="fixed inset-0 bg-background z-50 flex flex-col pt-safe pb-safe">
       <div className="flex items-center justify-between p-4 border-b">
         <h2 className="text-xl font-semibold">{t(userLanguage, "exercise.select_title")}</h2>
         <Button variant="ghost" size="sm" onClick={onClose}>
@@ -1624,7 +1624,7 @@ export default function WorkoutTracker() {
 
   return (
     <div
-      className={`min-h-screen ${isDarkTheme ? "dark" : ""}`}
+      className={`min-h-screen pt-safe ${isDarkTheme ? "dark" : ""}`}
       style={{ backgroundColor: telegramWebApp?.themeParams.bg_color || undefined }}
     >
       {telegramWebApp?.initDataUnsafe.user && (
