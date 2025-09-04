@@ -61,7 +61,7 @@ function DialogContent({
         data-slot="dialog-content"
         className={cn(
           // Mobile: full-screen with safe areas; Desktop: centered modal
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed inset-0 z-50 grid w-full max-w-[calc(100%-1rem)] m-2 gap-4 rounded-lg border p-4 shadow-lg duration-200 sm:top-[50%] sm:left-[50%] sm:inset-auto sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-lg pt-safe pb-safe max-h-[calc(var(--tg-viewport-height,100vh)-var(--app-safe-top,0px)-var(--app-safe-bottom,0px)-1rem)] overflow-y-auto",
+          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed inset-0 z-50 grid w-full max-w-[calc(100%-1rem)] m-2 gap-4 rounded-lg border p-4 shadow-lg duration-200 sm:top-[50%] sm:left-[50%] sm:inset-auto sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-lg pt-safe pb-safe max-h-[calc(var(--tg-viewport-height,100vh)-var(--app-safe-top,0px)-var(--app-safe-bottom,0px)-1rem)] overflow-y-auto", "p-4 pb-8 sm:p-6",
           className
         )}
         {...props}
