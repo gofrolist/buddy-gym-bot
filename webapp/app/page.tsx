@@ -1139,11 +1139,9 @@ export default function WorkoutTracker() {
           document.documentElement.style.setProperty("--primary-foreground", tg.themeParams.button_text_color)
         }
 
-        // Expand the app to full height
-        tg.expand()
-
-        // Ready the app
+        // Expand and ready
         tg.ready()
+        tg.expand()
 
         // Bind viewport and safe area CSS variables so our utilities work
         const applyTelegramViewportCssVars = () => {
@@ -1210,17 +1208,17 @@ export default function WorkoutTracker() {
           // ignore
         }
 
-        // Handle theme changes
-        tg.onEvent("themeChanged", () => {
-          setIsDarkTheme(tg.colorScheme === "dark")
-          // Reapply theme colors
-          if (tg.themeParams.bg_color) {
-            document.documentElement.style.setProperty("--background", tg.themeParams.bg_color)
-          }
-          if (tg.themeParams.text_color) {
-            document.documentElement.style.setProperty("--foreground", tg.themeParams.text_color)
-          }
-        })
+        // Handle theme changes and ensure dark class toggled like your snippet
+        const updateTheme = () => {
+          const isDark = tg.colorScheme === "dark"
+          setIsDarkTheme(isDark)
+          document.documentElement.classList.toggle("dark", isDark)
+          // Reapply theme colors when theme changes
+          if (tg.themeParams.bg_color) document.documentElement.style.setProperty("--background", tg.themeParams.bg_color)
+          if (tg.themeParams.text_color) document.documentElement.style.setProperty("--foreground", tg.themeParams.text_color)
+        }
+        updateTheme()
+        tg.onEvent("themeChanged", updateTheme)
       } else if (isDevelopment) {
         // Development mode - create mock Telegram WebApp
         const mockTg = createMockTelegramWebApp(devUserId)
