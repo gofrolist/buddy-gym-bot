@@ -119,8 +119,8 @@
   }
   body {
     @apply bg-background text-foreground;
-    padding-top: var(--tg-content-safe-area-inset-top, var(--tg-safe-area-inset-top, env(safe-area-inset-top)));
-    padding-bottom: var(--tg-content-safe-area-inset-bottom, var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom)));
+    padding-top: var(--app-safe-top, var(--tg-content-safe-area-inset-top, var(--tg-safe-area-inset-top, env(safe-area-inset-top))));
+    padding-bottom: var(--app-safe-bottom, var(--tg-content-safe-area-inset-bottom, var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom))));
   }
 }
 

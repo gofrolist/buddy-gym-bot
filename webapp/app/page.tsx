@@ -1170,6 +1170,17 @@ export default function WorkoutTracker() {
 
             setInset("tg-safe-area-inset", safe)
             setInset("tg-content-safe-area-inset", contentSafe)
+
+            // Derive app-safe variables as a robust fallback
+            const visual = (window as any).visualViewport
+            const vvTop = visual && typeof visual.offsetTop === "number" ? visual.offsetTop : 0
+            const vvBottom = visual && typeof visual.height === "number"
+              ? Math.max(0, window.innerHeight - visual.height - vvTop)
+              : 0
+            const derivedTop = (contentSafe?.top ?? safe?.top ?? 0) || vvTop || 0
+            const derivedBottom = (contentSafe?.bottom ?? safe?.bottom ?? 0) || vvBottom || 0
+            root.style.setProperty("--app-safe-top", `${Math.max(0, derivedTop)}px`)
+            root.style.setProperty("--app-safe-bottom", `${Math.max(0, derivedBottom)}px`)
           } catch {
             // no-op
           }
@@ -1184,6 +1195,19 @@ export default function WorkoutTracker() {
           tg.onEvent && tg.onEvent("viewportChanged", applyTelegramViewportCssVars as any)
         } catch {
           // ignore if not supported
+        }
+
+        // Also track visualViewport changes (works on iOS WebKit)
+        try {
+          const visual = (window as any).visualViewport
+          if (visual) {
+            visual.addEventListener("resize", applyTelegramViewportCssVars)
+            visual.addEventListener("scroll", applyTelegramViewportCssVars)
+          }
+          window.addEventListener("orientationchange", applyTelegramViewportCssVars)
+          window.addEventListener("resize", applyTelegramViewportCssVars)
+        } catch {
+          // ignore
         }
 
         // Handle theme changes
