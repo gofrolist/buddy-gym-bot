@@ -1624,7 +1624,7 @@ export default function WorkoutTracker() {
 
   return (
     <div
-      className={`min-h-screen pt-safe ${isDarkTheme ? "dark" : ""}`}
+      className={`min-h-screen-tg pt-safe ${isDarkTheme ? "dark" : ""}`}
       style={{ backgroundColor: telegramWebApp?.themeParams.bg_color || undefined }}
     >
       {telegramWebApp?.initDataUnsafe.user && (
