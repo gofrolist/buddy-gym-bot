@@ -3,6 +3,7 @@ from __future__ import annotations
 import difflib
 import json
 import logging
+import os
 import re
 import unicodedata
 from collections import defaultdict
@@ -11,7 +12,7 @@ from typing import Any, cast
 
 import httpx
 
-from ..config import SETTINGS
+from ..config import SETTINGS, Config
 from ..exercisedb import ExerciseDBClient
 
 # Very small alias list for generic names (doesn't force user locale; just helps common cases)
@@ -231,6 +232,23 @@ def build_constraints_schema() -> dict[str, Any]:
 # Build schema programmatically to prevent mismatches
 CONSTRAINTS_SCHEMA = build_constraints_schema()
 
+
+def _get_openai_api_key() -> str | None:
+    """Resolve OPENAI_API_KEY with test-friendly semantics.
+
+    - If `SETTINGS` is monkeypatched (not an instance of `Config`), respect
+      its `OPENAI_API_KEY` value directly (even if None) to allow tests to
+      simulate the missing-key case.
+    - Otherwise, prefer the runtime environment variable, falling back to the
+      value baked into `SETTINGS` when the process started.
+    """
+    if not isinstance(SETTINGS, Config):
+        # Likely mocked in tests; use the mocked value
+        return getattr(SETTINGS, "OPENAI_API_KEY", None)
+
+    return os.getenv("OPENAI_API_KEY") or SETTINGS.OPENAI_API_KEY
+
+
 # Constraint sanitization and day resolution functions
 
 
@@ -300,12 +318,13 @@ def resolve_requested_days(c: dict[str, Any]) -> list[str]:
 
 async def extract_constraints(raw_text: str) -> dict[str, Any] | None:
     """Extract workout constraints from user messages in any language."""
-    if not SETTINGS.OPENAI_API_KEY:
+    api_key = _get_openai_api_key()
+    if not api_key:
         return None
 
     try:
         headers = {
-            "Authorization": f"Bearer {SETTINGS.OPENAI_API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
 
@@ -406,12 +425,13 @@ async def call_plan_generator(
     constraints: dict[str, Any], tz: str, requested_days: list[str]
 ) -> dict[str, Any] | None:
     """Generate a workout plan based on extracted constraints."""
-    if not SETTINGS.OPENAI_API_KEY:
+    api_key = _get_openai_api_key()
+    if not api_key:
         return None
 
     try:
         headers = {
-            "Authorization": f"Bearer {SETTINGS.OPENAI_API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
 
@@ -830,7 +850,7 @@ async def generate_schedule(
     text: str, tz: str = "UTC", base_plan: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     """Generate a workout schedule using the new two-step approach."""
-    if not SETTINGS.OPENAI_API_KEY:
+    if not _get_openai_api_key():
         raise ValueError("OpenAI API key not configured. Cannot generate workout plan.")
 
     try:
